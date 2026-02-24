@@ -53,13 +53,13 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	case "counter":
 		v, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid value for counter", http.StatusMethodNotAllowed)
+			http.Error(w, "Invalid value for counter", http.StatusBadRequest)
 		}
 		storage.Counters[metricName] += counter(v)
 	case "gauge":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			http.Error(w, "Invalid value for gauge", http.StatusMethodNotAllowed)
+			http.Error(w, "Invalid value for gauge", http.StatusBadRequest)
 		}
 		storage.Gauges[metricName] = gauge(v)
 	default:

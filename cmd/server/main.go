@@ -53,21 +53,19 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	case "counter":
 		v, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			http.Error(w, "Invalid value for counter", http.StatusBadRequest)
+			http.Error(w, "Invalid value for counter", http.StatusMethodNotAllowed)
 		}
 		storage.Counters[metricName] += counter(v)
 	case "gauge":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			http.Error(w, "Invalid value for gauge", http.StatusBadRequest)
+			http.Error(w, "Invalid value for gauge", http.StatusMethodNotAllowed)
 		}
 		storage.Gauges[metricName] = gauge(v)
 	default:
 		http.Error(w, "Unknown metric type", http.StatusBadRequest)
 		return
 	}
-
-	fmt.Println("Success!")
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -76,7 +74,7 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 func run() {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/update/{metricType}/{metricName}/{value}/{$}", updateHandler)
+	mux.HandleFunc("/update/{metricType}/{metricName}/{value}", updateHandler)
 
 	err := http.ListenAndServe(":8080", mux)
 	if err != nil {

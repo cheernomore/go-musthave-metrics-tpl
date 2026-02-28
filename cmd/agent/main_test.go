@@ -15,7 +15,7 @@ func TestSendMetrics(t *testing.T) {
 	testMux := http.NewServeMux()
 	testMux.HandleFunc("/update/{metricType}/{metricName}/{value}", handler.UpdateHandler)
 	testServer := httptest.NewServer(testMux)
-	baseUrl := testServer.URL + "/update"
+	baseURL := testServer.URL + "/update"
 
 	type want struct {
 		status      int
@@ -57,7 +57,7 @@ func TestSendMetrics(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			client := &http.Client{}
-			res, err := SendMetrics(baseUrl, test.metricType, test.metricName, test.value, client)
+			res, err := SendMetrics(baseURL, test.metricType, test.metricName, test.value, client)
 			require.NoError(t, err)
 
 			assert.Equal(t, test.want.status, res.StatusCode)

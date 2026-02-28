@@ -40,7 +40,10 @@ func main() {
 
 	for range updateMetricsTicker.C {
 		for _, metric := range metrics {
-			SendMetrics("http://localhost:8080/update/", metric.Type, metric.Name, metric.Value, &client)
+			_, err := SendMetrics("http://localhost:8080/update/", metric.Type, metric.Name, metric.Value, &client)
+			if err != nil {
+				fmt.Println("Error request")
+			}
 		}
 	}
 }

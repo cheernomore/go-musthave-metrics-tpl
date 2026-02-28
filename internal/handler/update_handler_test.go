@@ -52,6 +52,7 @@ func TestUpdateHandler(t *testing.T) {
 			res := w.Result()
 
 			body, _ := io.ReadAll(w.Body)
+			defer res.Body.Close()
 
 			assert.Equal(t, test.want.code, res.StatusCode, string(body))
 			assert.Equal(t, test.want.contentType, res.Header.Get("Content-Type"))

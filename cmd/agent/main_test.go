@@ -13,7 +13,7 @@ import (
 func TestSendMetrics(t *testing.T) {
 
 	testMux := http.NewServeMux()
-	testMux.HandleFunc("/update/{metricType}/{metricName}/{value}", handler.UpdateHandler)
+	testMux.HandleFunc("/update/{metricType}/{metricName}/{value}", handler.Update)
 	testServer := httptest.NewServer(testMux)
 	baseURL := testServer.URL + "/update"
 

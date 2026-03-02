@@ -49,7 +49,7 @@ func main() {
 }
 
 func SendMetrics(baseURL string, metricType string, metricName string, value any, client *http.Client) (SendResult, error) {
-	url := baseURL + "/" + metricType + "/" + metricName + "/" + valueToString(metricType, value)
+	url := baseURL + metricType + "/" + metricName + "/" + valueToString(metricType, value)
 	request, err := http.NewRequest(http.MethodPost, url, nil)
 	if err != nil {
 		fmt.Printf("Error create request: %s", err)

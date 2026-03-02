@@ -65,6 +65,7 @@ func TestUpdate(t *testing.T) {
 
 	for _, test := range tests {
 		resp, get := testRequest(t, ts, "POST", test.target)
+		defer resp.Body.Close()
 		assert.Equal(t, test.want.code, resp.StatusCode, get)
 	}
 }

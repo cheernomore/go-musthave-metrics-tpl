@@ -79,6 +79,10 @@ func getMetricsPooler() func(m *runtime.MemStats) []Metric {
 	return func(m *runtime.MemStats) []Metric {
 		fmt.Println("-----METRICS UPDATED-----")
 		runtime.ReadMemStats(m)
+
+		if pollCount == 5 {
+			pollCount = 0
+		}
 		pollCount++
 
 		return []Metric{
@@ -144,5 +148,5 @@ func valueToString(metricType string, v any) string {
 		return "0.00" // или обработка ошибки
 	}
 
-	return strconv.FormatFloat(f, 'f', 2, 64)
+	return strconv.FormatFloat(f, 'f', 3, 64)
 }

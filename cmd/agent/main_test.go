@@ -48,7 +48,7 @@ func TestSendMetrics(t *testing.T) {
 	}{
 		{
 			name:   "positive gauge send",
-			target: "/update/gauge/Alloc/234.2",
+			target: "/update/gauge/Alloc/234.234",
 			want: want{
 				status:      200,
 				contentType: "text/plain; charset=utf-8",

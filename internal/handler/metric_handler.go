@@ -118,7 +118,7 @@ func save(metricType string, metricName string, value string, w http.ResponseWri
 			http.Error(w, "Invalid value for counter", http.StatusBadRequest)
 			return
 		}
-		Storage.Counters[metricName] = counter(v)
+		Storage.Counters[metricName] += counter(v)
 	case "gauge":
 		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {

@@ -45,7 +45,7 @@ func TestUpdate(t *testing.T) {
 	}{
 		{
 			name:   "positive counter",
-			target: "/update/counter/metricName/100",
+			target: "/update/counter/testSetGet20/263",
 			want: want{
 				code:        200,
 				contentType: "text/plain; charset=utf-8",
@@ -54,7 +54,7 @@ func TestUpdate(t *testing.T) {
 		},
 		{
 			name:   "positive gauge",
-			target: "/update/gauge/metricName/100.0",
+			target: "/update/gauge/Alloc/100.0",
 			want: want{
 				code:        200,
 				contentType: "text/plain; charset=utf-8",

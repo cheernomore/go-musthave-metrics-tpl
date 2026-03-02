@@ -25,11 +25,6 @@ func NewMemStorage() MemStorage {
 var Storage = NewMemStorage()
 
 func Update(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "text/plain" {
-		http.Error(w, "Content-Type wrong", http.StatusBadRequest)
-		return
-	}
-
 	metricType := chi.URLParam(r, "metricType")
 	metricName := chi.URLParam(r, "metricName")
 	value := chi.URLParam(r, "value")

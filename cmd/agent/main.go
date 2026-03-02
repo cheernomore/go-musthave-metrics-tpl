@@ -54,7 +54,6 @@ func SendMetrics(baseURL string, metricType string, metricName string, value any
 	if err != nil {
 		fmt.Printf("Error create request: %s", err)
 	}
-	request.Header.Set("Content-Type", "text/plain")
 
 	response, err := client.Do(request)
 	if err != nil {

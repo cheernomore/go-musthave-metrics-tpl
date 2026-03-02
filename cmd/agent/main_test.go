@@ -15,7 +15,7 @@ import (
 func testRequest(t *testing.T, ts *httptest.Server, method,
 	path string) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, nil)
-	req.Header.Set("Content-Type", "text/plain")
+
 	require.NoError(t, err)
 
 	resp, err := ts.Client().Do(req)
@@ -69,6 +69,7 @@ func TestSendMetrics(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			resp, get := testRequest(t, testServer, "POST", test.target)
+			defer resp.Body.Close()
 			assert.Equal(t, test.want.status, resp.StatusCode, get)
 			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"), get)
 		})

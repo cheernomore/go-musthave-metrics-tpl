@@ -2,6 +2,8 @@ package main
 
 import (
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
+	"github.com/go-chi/chi"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,12 +12,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testRequest(t *testing.T, ts *httptest.Server, method,
+	path string) (*http.Response, string) {
+	req, err := http.NewRequest(method, ts.URL+path, nil)
+	req.Header.Set("Content-Type", "text/plain")
+	require.NoError(t, err)
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	return resp, string(respBody)
+}
+
 func TestSendMetrics(t *testing.T) {
 
-	testMux := http.NewServeMux()
-	testMux.HandleFunc("/update/{metricType}/{metricName}/{value}", handler.Update)
-	testServer := httptest.NewServer(testMux)
-	baseURL := testServer.URL + "/update"
+	r := chi.NewRouter()
+	r.Post("/update/{metricType}/{metricName}/{value}", handler.Update)
+
+	testServer := httptest.NewServer(r)
 
 	type want struct {
 		status      int
@@ -23,18 +41,14 @@ func TestSendMetrics(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		metricType string
-		metricName string
-		value      any
-		want       want
-		wantErr    bool
+		name    string
+		target  string
+		want    want
+		wantErr bool
 	}{
 		{
-			name:       "positive gauge send",
-			metricType: "gauge",
-			metricName: "Alloc",
-			value:      1000.00,
+			name:   "positive gauge send",
+			target: "/update/gauge/Alloc/234.2",
 			want: want{
 				status:      200,
 				contentType: "text/plain; charset=utf-8",
@@ -42,10 +56,8 @@ func TestSendMetrics(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:       "positive counter send",
-			metricType: "counter",
-			metricName: "PollCount",
-			value:      int64(100),
+			name:   "positive counter send",
+			target: "/update/counter/PollCount/1000",
 			want: want{
 				status:      200,
 				contentType: "text/plain; charset=utf-8",
@@ -56,12 +68,9 @@ func TestSendMetrics(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			client := &http.Client{}
-			res, err := SendMetrics(baseURL, test.metricType, test.metricName, test.value, client)
-			require.NoError(t, err)
-
-			assert.Equal(t, test.want.status, res.StatusCode)
-			assert.Equal(t, test.want.contentType, res.Header)
+			resp, get := testRequest(t, testServer, "POST", test.target)
+			assert.Equal(t, test.want.status, resp.StatusCode, get)
+			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"), get)
 		})
 	}
 }

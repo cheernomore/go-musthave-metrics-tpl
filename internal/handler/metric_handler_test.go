@@ -26,6 +26,39 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 	return resp, string(respBody)
 }
 
+func TestGet(t *testing.T) {
+	r := chi.NewRouter()
+	r.Get("/value/{metricType}/{metricName}", Get)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	type want struct {
+		code int
+	}
+
+	tests := []struct {
+		name    string
+		target  string
+		want    want
+		wantErr bool
+	}{
+		{
+			name:   "negative get value",
+			target: "/value/counter/testSetGet148",
+			want: want{
+				code: 404,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		resp, get := testRequest(t, ts, "GET", test.target)
+		defer resp.Body.Close()
+		assert.Equal(t, test.want.code, resp.StatusCode, get)
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	r := chi.NewRouter()
 	r.Post("/update/{metricType}/{metricName}/{value}", Update)

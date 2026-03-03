@@ -27,14 +27,17 @@ func main() {
 	metricsPooler := getMetricsPooler()
 	client := getClient()
 
+	pollInterval := time.Duration(flagPollInterval) * time.Second
+	reportInterval := time.Duration(flagReportInterval) * time.Second
+
 	go func() {
-		ticker := time.NewTicker(flagPollInterval)
+		ticker := time.NewTicker(pollInterval)
 		for range ticker.C {
 			metrics = metricsPooler(&m)
 		}
 	}()
 
-	updateMetricsTicker := time.NewTicker(flagReportInterval)
+	updateMetricsTicker := time.NewTicker(reportInterval)
 	defer updateMetricsTicker.Stop()
 
 	for range updateMetricsTicker.C {

@@ -2,9 +2,9 @@ package main
 
 import "flag"
 
-var flagAdressPort string
+var flagAddressPort string
 
 func parseFlags() {
-	flag.StringVar(&flagAdressPort, "a", "localhost:8080", "port to run server")
+	flag.StringVar(&flagAddressPort, "a", "localhost:8080", "port to run server")
 	flag.Parse()
 }

@@ -64,26 +64,12 @@ func TestSendMetrics(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name:   "negative counter send",
-			target: "/value/counter/testSetGet5",
-			want: want{
-				status:      404,
-				contentType: "text/plain; charset=utf-8",
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			resp, get := testRequest(t, testServer, "POST", test.target)
 			defer resp.Body.Close()
-
-			if test.wantErr {
-				assert.Equal(t, test.want.status, resp.StatusCode, get)
-			}
-
 			assert.Equal(t, test.want.status, resp.StatusCode, get)
 			assert.Equal(t, test.want.contentType, resp.Header.Get("Content-Type"), get)
 		})

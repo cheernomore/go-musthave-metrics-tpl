@@ -39,7 +39,7 @@ func main() {
 
 	for range updateMetricsTicker.C {
 		for _, metric := range metrics {
-			_, err := SendMetrics(flagAdressPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
+			_, err := SendMetrics("http://"+flagAddressPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
 			if err != nil {
 				fmt.Println("Error request")
 			}

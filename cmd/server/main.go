@@ -20,6 +20,6 @@ func run() error {
 	r.Get("/value/{metricType}/{metricName}", handler.Get)
 	r.Get("/", handler.Index)
 
-	fmt.Println("running server on port: ", flagPort)
-	return http.ListenAndServe(flagPort, r)
+	fmt.Println("running server on port: ", flagAdressPort)
+	return http.ListenAndServe(flagAdressPort, r)
 }

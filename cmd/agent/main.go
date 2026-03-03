@@ -39,7 +39,7 @@ func main() {
 
 	for range updateMetricsTicker.C {
 		for _, metric := range metrics {
-			_, err := SendMetrics("http://localhost"+flagPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
+			_, err := SendMetrics(flagAdressPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
 			if err != nil {
 				fmt.Println("Error request")
 			}
@@ -147,5 +147,5 @@ func valueToString(metricType string, v any) string {
 		return "0.00" // или обработка ошибки
 	}
 
-	return strconv.FormatFloat(f, 'f', 3, 64)
+	return strconv.FormatFloat(f, 'f', -1, 64)
 }

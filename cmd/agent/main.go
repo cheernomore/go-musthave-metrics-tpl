@@ -21,26 +21,25 @@ type SendResult struct {
 }
 
 func main() {
+	parseFlags()
 	var m runtime.MemStats
 	var metrics []Metric
 	metricsPooler := getMetricsPooler()
 	client := getClient()
-	pollInterval := 2 * time.Second
-	reportInterval := 10 * time.Second
 
 	go func() {
-		ticker := time.NewTicker(pollInterval)
+		ticker := time.NewTicker(flagPollInterval)
 		for range ticker.C {
 			metrics = metricsPooler(&m)
 		}
 	}()
 
-	updateMetricsTicker := time.NewTicker(reportInterval)
+	updateMetricsTicker := time.NewTicker(flagReportInterval)
 	defer updateMetricsTicker.Stop()
 
 	for range updateMetricsTicker.C {
 		for _, metric := range metrics {
-			_, err := SendMetrics("http://localhost:8080/update/", metric.Type, metric.Name, metric.Value, &client)
+			_, err := SendMetrics("http://localhost"+flagPort+"update/", metric.Type, metric.Name, metric.Value, &client)
 			if err != nil {
 				fmt.Println("Error request")
 			}

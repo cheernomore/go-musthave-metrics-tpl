@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi"
 	"io"
 	"net/http"
@@ -29,9 +30,10 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 }
 
 func TestSendMetrics(t *testing.T) {
-
 	r := chi.NewRouter()
-	r.Post("/update/{metricType}/{metricName}/{value}", handler.Update)
+	repo := repository.NewMemStorage()
+	metricHandler := handler.NewMetricHandler(repo)
+	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 
 	testServer := httptest.NewServer(r)
 

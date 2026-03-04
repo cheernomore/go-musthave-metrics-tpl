@@ -1,79 +1,101 @@
 package handler
 
 import (
-	"fmt"
+	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi"
 	"html/template"
 	"net/http"
 	"strconv"
 )
 
-type gauge float64
-type counter int64
-type MemStorage struct {
-	Gauges   map[string]gauge
-	Counters map[string]counter
+type MetricHandler struct {
+	repo repository.MetricsRepository
 }
 
-func NewMemStorage() MemStorage {
-	return MemStorage{
-		Gauges:   make(map[string]gauge),
-		Counters: make(map[string]counter),
-	}
+func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {
+	return &MetricHandler{repo: repo}
 }
 
-var Storage = NewMemStorage()
+func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
+	var m models.Metrics
+	metricTypeURLParam := chi.URLParam(r, "metricType")
+	metricNameURLParam := chi.URLParam(r, "metricName")
+	valueURLParam := chi.URLParam(r, "value")
 
-func Update(w http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, "metricType")
-	metricName := chi.URLParam(r, "metricName")
-	value := chi.URLParam(r, "value")
-
-	if metricName == "" {
+	if metricNameURLParam == "" {
 		http.Error(w, "Metric name not present", http.StatusNotFound)
 		return
 	}
 
-	save(metricType, metricName, value, w)
+	if metricTypeURLParam == models.Counter {
+		parsedValue, err := strconv.ParseInt(valueURLParam, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid value for counter", http.StatusBadRequest)
+			return
+		}
+		m = models.Metrics{
+			ID:    metricNameURLParam,
+			MType: metricTypeURLParam,
+			Delta: &parsedValue,
+			Value: nil,
+			Hash:  "",
+		}
+	} else if metricTypeURLParam == models.Gauge {
+		parsedValue, err := strconv.ParseFloat(valueURLParam, 64)
+		if err != nil {
+			http.Error(w, "invalid value for gauge", http.StatusBadRequest)
+			return
+		}
+		m = models.Metrics{
+			ID:    metricNameURLParam,
+			MType: metricTypeURLParam,
+			Delta: nil,
+			Value: &parsedValue,
+			Hash:  "",
+		}
+	} else {
+		http.Error(w, "invalid metric type", http.StatusBadRequest)
+		return
+	}
+
+	err := h.repo.Save(m)
+	if err != nil {
+		http.Error(w, "problem with save metric to repo", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 }
 
-func Get(w http.ResponseWriter, r *http.Request) {
-	metricType := chi.URLParam(r, "metricType")
-	metricName := chi.URLParam(r, "metricName")
+func (h *MetricHandler) Get(w http.ResponseWriter, r *http.Request) {
+	metricTypeURLParam := chi.URLParam(r, "metricType")
+	metricNameURLParam := chi.URLParam(r, "metricName")
 
-	if metricName == "" {
-		http.Error(w, "Metric name not present", http.StatusNotFound)
+	if metricNameURLParam == "" {
+		http.Error(w, "metric name not present", http.StatusNotFound)
 		return
 	}
 
-	if metricType == "gauge" {
-		val, ok := Storage.Gauges[metricName]
-		if ok {
-			fmt.Println("Найдено:", val)
-		} else {
-			http.Error(w, "Ключ не существует", http.StatusNotFound)
-		}
+	m, err := h.repo.Find(metricNameURLParam, metricTypeURLParam)
+	if err != nil {
+		http.Error(w, "metric not found", http.StatusNotFound)
+		return
+	}
 
-		fmt.Println(valueToString(metricType, Storage.Gauges[metricName]))
-
-		w.Write([]byte(valueToString(metricType, Storage.Gauges[metricName])))
-	} else {
-		val, ok := Storage.Counters[metricName]
-		if ok {
-			fmt.Println("Найдено:", val)
-		} else {
-			http.Error(w, "Ключ не существует", http.StatusNotFound)
-		}
-
-		w.Write([]byte(valueToString(metricType, Storage.Counters[metricName])))
+	if m.MType == models.Counter {
+		valueStr := strconv.FormatInt(*m.Delta, 10)
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(valueStr))
+	} else {
+		valueStr := strconv.FormatFloat(*m.Value, 'f', -1, 64)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(valueStr))
 	}
 }
 
-func Index(w http.ResponseWriter, r *http.Request) {
+func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
 	const htmlTemplate = `
 		<!DOCTYPE html>
 		<html>
@@ -84,14 +106,18 @@ func Index(w http.ResponseWriter, r *http.Request) {
 			<h1>Current Metrics</h1>
 			<h2>Counters</h2>
 			<ul>
-			{{range $name, $value := .Counters}}
-				<li>{{$name}}: {{$value}}</li>
+			{{range $metric := .}}
+				 {{if eq $metric.MType "counter"}}
+					<li>{{$metric.ID}}: {{$metric.Delta}}</li>
+				{{end}}
 			{{end}}
 			</ul>
 			<h2>Gauges</h2>
 			<ul>
-			{{range $name, $value := .Gauges}}
-				<li>{{$name}}: {{$value}}</li>
+			{{range $metric := .}}
+				 {{if eq $metric.MType "gauge"}}
+					<li>{{$metric.ID}}: {{$metric.Value}}</li>
+				{{end}}
 			{{end}}
 			</ul>
 		</body>
@@ -103,67 +129,16 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = tmpl.Execute(w, Storage)
+	m, err := h.repo.FindAll()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func save(metricType string, metricName string, value string, w http.ResponseWriter) {
-	switch metricType {
-	case "counter":
-		v, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid value for counter", http.StatusBadRequest)
-			return
-		}
-		Storage.Counters[metricName] += counter(v)
-	case "gauge":
-		v, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			http.Error(w, "Invalid value for gauge", http.StatusBadRequest)
-			return
-		}
-		Storage.Gauges[metricName] = gauge(v)
-	default:
-		http.Error(w, "Unknown metric type", http.StatusBadRequest)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
-}
 
-func valueToString(metricType string, v any) string {
-	var f float64
-	var i int64
-
-	if metricType == "counter" {
-		switch t := v.(type) {
-		case counter:
-			i = int64(t)
-		case int64:
-			i = t
-		case uint64:
-			i = int64(t)
-		default:
-			return "0.00"
-		}
-		return strconv.FormatInt(i, 10)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err = tmpl.Execute(w, m)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	switch t := v.(type) {
-	case gauge:
-		f = float64(t)
-	case float64:
-		f = t
-	case uint64:
-		f = float64(t)
-	case uint32:
-		f = float64(t)
-	case int64:
-		f = float64(t)
-	default:
-		return "0.00" // или обработка ошибки
-	}
-
-	return strconv.FormatFloat(f, 'f', -1, 64)
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,9 +27,12 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 	return resp, string(respBody)
 }
 
-func TestGet(t *testing.T) {
+func TestMetricHandler_Get(t *testing.T) {
 	r := chi.NewRouter()
-	r.Get("/value/{metricType}/{metricName}", Get)
+	repo := repository.NewMemStorage()
+	metricHandler := NewMetricHandler(repo)
+
+	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 
@@ -59,9 +63,11 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestUpdate(t *testing.T) {
+func TestMetricHandler_Update(t *testing.T) {
 	r := chi.NewRouter()
-	r.Post("/update/{metricType}/{metricName}/{value}", Update)
+	repo := repository.NewMemStorage()
+	metricHandler := NewMetricHandler(repo)
+	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
 

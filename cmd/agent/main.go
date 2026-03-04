@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,9 @@ func main() {
 	parseFlags()
 	var m runtime.MemStats
 	var metrics []Metric
+
+	var mu sync.Mutex
+
 	metricsPooler := getMetricsPooler()
 	client := getClient()
 
@@ -33,7 +37,9 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(pollInterval)
 		for range ticker.C {
+			mu.Lock()
 			metrics = metricsPooler(&m)
+			mu.Unlock()
 		}
 	}()
 
@@ -41,6 +47,11 @@ func main() {
 	defer updateMetricsTicker.Stop()
 
 	for range updateMetricsTicker.C {
+		mu.Lock()
+		localMetrics := make([]Metric, len(metrics))
+		copy(localMetrics, metrics)
+		mu.Unlock()
+
 		for _, metric := range metrics {
 			_, err := SendMetrics("http://"+flagAddressPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
 			if err != nil {

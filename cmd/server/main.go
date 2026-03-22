@@ -1,10 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 	"net/http"
 )
 
@@ -16,14 +17,18 @@ func main() {
 }
 
 func run() error {
+	if err := logger.Initialize("info"); err != nil {
+		return err
+	}
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
 	metricHandler := handler.NewMetricHandler(repo)
 
+	r.Use(logger.RequestLogger)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
 	r.Get("/", metricHandler.Index)
 
-	fmt.Println("running server on port: ", flagAddressPort)
+	logger.Log.Info("Running server", zap.String("address", flagAddressPort))
 	return http.ListenAndServe(flagAddressPort, r)
 }

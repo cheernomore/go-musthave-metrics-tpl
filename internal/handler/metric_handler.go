@@ -11,6 +11,8 @@ import (
 
 type MetricHandler struct {
 	repo repository.MetricsRepository
+	w    http.ResponseWriter
+	r    *http.Request
 }
 
 func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {

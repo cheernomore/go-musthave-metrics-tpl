@@ -21,6 +21,7 @@ type SendResult struct {
 	Header     string
 }
 
+//	комментарий костыль для проверки actions
 func main() {
 	parseFlags()
 	var m runtime.MemStats

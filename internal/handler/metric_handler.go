@@ -3,7 +3,7 @@ package handler
 import (
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 	"html/template"
 	"net/http"
 	"strconv"

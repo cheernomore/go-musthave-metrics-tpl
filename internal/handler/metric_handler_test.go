@@ -2,7 +2,7 @@ package handler
 
 import (
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"

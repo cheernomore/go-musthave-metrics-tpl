@@ -3,10 +3,12 @@ package repository
 import (
 	"fmt"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
+	"sync"
 )
 
 type MemStorage struct {
 	Metrics map[string]models.Metrics
+	mu      sync.RWMutex
 }
 
 func NewMemStorage() *MemStorage {
@@ -16,6 +18,9 @@ func NewMemStorage() *MemStorage {
 }
 
 func (m *MemStorage) Save(metric models.Metrics) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	switch metric.MType {
 	case models.Counter:
 		if existing, ok := m.Metrics[metric.ID]; ok {
@@ -30,6 +35,9 @@ func (m *MemStorage) Save(metric models.Metrics) error {
 }
 
 func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	if val, ok := m.Metrics[id]; ok {
 		if val.MType == metricType {
 			return val, nil
@@ -40,6 +48,9 @@ func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) 
 }
 
 func (m *MemStorage) FindAll() ([]models.Metrics, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	var outputMetrics []models.Metrics
 	for _, v := range m.Metrics {
 		outputMetrics = append(outputMetrics, v)

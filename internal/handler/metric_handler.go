@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"encoding/json"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -17,6 +20,71 @@ type MetricHandler struct {
 
 func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {
 	return &MetricHandler{repo: repo}
+}
+
+func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
+	var m models.Metrics
+
+	logger.Log.Debug("decoding request")
+	var req models.Metrics
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&req); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if req.MType == models.Counter {
+		m = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Delta: req.Delta,
+			Value: nil,
+		}
+	} else if req.MType == models.Gauge {
+		m = models.Metrics{
+			ID:    req.ID,
+			MType: req.MType,
+			Delta: nil,
+			Value: req.Value,
+		}
+	} else {
+		http.Error(w, "invalid metric type", http.StatusBadRequest)
+		return
+	}
+
+	err := h.repo.Save(m)
+	if err != nil {
+		http.Error(w, "problem with save metric to repo", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {
+
+	logger.Log.Debug("decoding request")
+	var req models.Metrics
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&req); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	find, err := h.repo.Find(req.ID, req.MType)
+	if err != nil {
+		http.Error(w, "Metric not present", http.StatusNotFound)
+		return
+	}
+
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(find); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+		return
+	}
 }
 
 func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -41,7 +109,6 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 			MType: metricTypeURLParam,
 			Delta: &parsedValue,
 			Value: nil,
-			Hash:  "",
 		}
 	} else if metricTypeURLParam == models.Gauge {
 		parsedValue, err := strconv.ParseFloat(valueURLParam, 64)
@@ -54,7 +121,6 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 			MType: metricTypeURLParam,
 			Delta: nil,
 			Value: &parsedValue,
-			Hash:  "",
 		}
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)

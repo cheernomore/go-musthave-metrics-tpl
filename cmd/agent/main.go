@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -52,30 +55,80 @@ func main() {
 		copy(localMetrics, metrics)
 		mu.Unlock()
 
-		for _, metric := range metrics {
-			_, err := SendMetrics("http://"+flagAddressPort+"/update/", metric.Type, metric.Name, metric.Value, &client)
+		for _, metric := range localMetrics {
+			payload := models.Metrics{
+				ID:    metric.Name,
+				MType: metric.Type,
+			}
+
+			switch v := metric.Value.(type) {
+			case float64:
+				payload.Value = &v
+			case int64:
+				payload.Delta = &v
+			case uint64:
+				if metric.Type == "gauge" {
+					floatVal := float64(v)
+					payload.Value = &floatVal
+				} else {
+					intVal := int64(v)
+					payload.Delta = &intVal
+				}
+			case uint32:
+				if metric.Type == "gauge" {
+					floatVal := float64(v)
+					payload.Value = &floatVal
+				} else {
+					intVal := int64(v)
+					payload.Delta = &intVal
+				}
+			case uint16:
+				if metric.Type == "gauge" {
+					floatVal := float64(v)
+					payload.Value = &floatVal
+				} else {
+					intVal := int64(v)
+					payload.Delta = &intVal
+				}
+			case uint8:
+				if metric.Type == "gauge" {
+					floatVal := float64(v)
+					payload.Value = &floatVal
+				} else {
+					intVal := int64(v)
+					payload.Delta = &intVal
+				}
+			}
+
+			_, err := SendMetrics("http://"+flagAddressPort+"/update", payload, &client)
 			if err != nil {
-				fmt.Println("Error request")
+				fmt.Printf("Error sending metric [%s, type=%s]: %v\n", metric.Name, metric.Type, err)
 			}
 		}
 	}
 }
 
-func SendMetrics(baseURL string, metricType string, metricName string, value any, client *http.Client) (SendResult, error) {
-	url := baseURL + metricType + "/" + metricName + "/" + valueToString(metricType, value)
-	request, err := http.NewRequest(http.MethodPost, url, nil)
+func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendResult, error) {
+	body, err := json.Marshal(metrics)
 	if err != nil {
-		fmt.Printf("Error create request: %s", err)
+		return SendResult{}, err
 	}
+
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+	if err != nil {
+		return SendResult{}, fmt.Errorf("ошибка создания запроса: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/json")
 
 	response, err := client.Do(request)
 	if err != nil {
-		fmt.Printf("Error with request: %s", err)
+		return SendResult{}, fmt.Errorf("ошибка при выполнении запроса: %w", err)
 	}
 
 	defer response.Body.Close()
 
-	fmt.Printf("Sent: %s, Status: %s\n", url, response.Status)
+	fmt.Printf("Sent: %s, Status: %s\n Request: %s\n", url, response.Status, body)
 	return SendResult{
 		StatusCode: response.StatusCode,
 		Header:     response.Header.Get("Content-Type"),

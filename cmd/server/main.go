@@ -27,7 +27,9 @@ func run() error {
 	r.Use(logger.RequestLogger)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	r.Post("/update", metricHandler.UpdateNew)
-	r.Get("/value", metricHandler.Value)
+	r.Post("/update/", metricHandler.UpdateNew)
+	r.Post("/value", metricHandler.Value)
+	r.Post("/value/", metricHandler.Value)
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
 	r.Get("/", metricHandler.Index)
 

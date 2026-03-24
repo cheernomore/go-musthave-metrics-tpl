@@ -17,12 +17,14 @@ import (
 func testRequest(t *testing.T, ts *httptest.Server, method,
 	path string) (*http.Response, string) {
 	req, err := http.NewRequest(method, ts.URL+path, nil)
-	req.Header.Set("Content-Type", "text/plain")
 	require.NoError(t, err)
+	req.Header.Set("Content-Type", "text/plain")
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -41,12 +43,14 @@ func testJSONRequest(t *testing.T, ts *httptest.Server, method,
 	}
 
 	req, err := http.NewRequest(method, ts.URL+path, bytes.NewBuffer(reqBody))
-	req.Header.Set("Content-Type", "application/json")
 	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)

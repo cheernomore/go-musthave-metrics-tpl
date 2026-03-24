@@ -59,8 +59,19 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Получаем сохраненную метрику из репозитория
+	saved, err := h.repo.Find(m.ID, m.MType)
+	if err != nil {
+		http.Error(w, "problem retrieving saved metric", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	if err := enc.Encode(saved); err != nil {
+		logger.Log.Debug("error encoding response", zap.Error(err))
+		return
+	}
 }
 
 func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {

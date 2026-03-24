@@ -59,7 +59,7 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -80,6 +80,7 @@ func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(find); err != nil {
 		logger.Log.Debug("error encoding response", zap.Error(err))

@@ -22,9 +22,6 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
-	defer func() {
-		_ = resp.Body.Close()
-	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -48,9 +45,6 @@ func testJSONRequest(t *testing.T, ts *httptest.Server, method,
 
 	resp, err := ts.Client().Do(req)
 	require.NoError(t, err)
-	defer func() {
-		_ = resp.Body.Close()
-	}()
 
 	respBody, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -89,6 +83,7 @@ func TestMetricHandler_Get(t *testing.T) {
 
 	for _, test := range tests {
 		resp, get := testRequest(t, ts, "GET", test.target)
+		_ = resp.Body.Close()
 		assert.Equal(t, test.want.code, resp.StatusCode, get)
 	}
 }
@@ -134,6 +129,7 @@ func TestMetricHandler_Update(t *testing.T) {
 
 	for _, test := range tests {
 		resp, get := testRequest(t, ts, "POST", test.target)
+		_ = resp.Body.Close()
 		assert.Equal(t, test.want.code, resp.StatusCode, get)
 	}
 }
@@ -221,6 +217,7 @@ func TestMetricHandler_UpdateNew(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			resp, _ := testJSONRequest(t, ts, "POST", "/update", test.payload)
+			_ = resp.Body.Close()
 			assert.Equal(t, test.want.code, resp.StatusCode)
 		})
 	}
@@ -297,6 +294,7 @@ func TestMetricHandler_Value(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			resp, body := testJSONRequest(t, ts, "POST", "/value", test.payload)
+			_ = resp.Body.Close()
 			assert.Equal(t, test.want.code, resp.StatusCode)
 
 			if !test.wantErr && resp.StatusCode == 200 {

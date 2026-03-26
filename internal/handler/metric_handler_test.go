@@ -55,7 +55,7 @@ func testJSONRequest(t *testing.T, ts *httptest.Server, method,
 func TestMetricHandler_Get(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, "", 0)
 
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
 	ts := httptest.NewServer(r)
@@ -91,7 +91,7 @@ func TestMetricHandler_Get(t *testing.T) {
 func TestMetricHandler_Update(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, "", 0)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -137,7 +137,7 @@ func TestMetricHandler_Update(t *testing.T) {
 func TestMetricHandler_UpdateNew(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, "", 0)
 	r.Post("/update", metricHandler.UpdateNew)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -226,7 +226,7 @@ func TestMetricHandler_UpdateNew(t *testing.T) {
 func TestMetricHandler_Value(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, "", 0)
 
 	// Setup: добавляем метрики
 	gaugeValue := 123.45
@@ -303,6 +303,62 @@ func TestMetricHandler_Value(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, test.payload.ID, result.ID)
 				assert.Equal(t, test.payload.MType, result.MType)
+			}
+		})
+	}
+}
+
+func TestMetricHandler_Index(t *testing.T) {
+	r := chi.NewRouter()
+	repo := repository.NewMemStorage()
+	metricHandler := NewMetricHandler(repo, "", 0)
+
+	// Setup: добавляем метрики
+	gaugeValue := 123.45
+	counterDelta := int64(10)
+	_ = repo.Save(models.Metrics{
+		ID:    "TestGauge",
+		MType: "gauge",
+		Value: &gaugeValue,
+	})
+	_ = repo.Save(models.Metrics{
+		ID:    "TestCounter",
+		MType: "counter",
+		Delta: &counterDelta,
+	})
+
+	r.Get("/", metricHandler.Index)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	tests := []struct {
+		name         string
+		wantCode     int
+		wantContains []string
+	}{
+		{
+			name:     "index page renders correctly",
+			wantCode: 200,
+			wantContains: []string{
+				"<!DOCTYPE html>",
+				"Metrics Monitoring",
+				"TestGauge",
+				"TestCounter",
+				"Counters",
+				"Gauges",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, body := testRequest(t, ts, "GET", "/")
+			_ = resp.Body.Close()
+			assert.Equal(t, tt.wantCode, resp.StatusCode)
+			assert.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+			for _, substr := range tt.wantContains {
+				assert.Contains(t, body, substr)
 			}
 		})
 	}

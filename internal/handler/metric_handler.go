@@ -13,13 +13,25 @@ import (
 )
 
 type MetricHandler struct {
-	repo repository.MetricsRepository
-	w    http.ResponseWriter
-	r    *http.Request
+	repo            repository.MetricsRepository
+	fileStoragePath string
+	storeInterval   int
 }
 
-func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {
-	return &MetricHandler{repo: repo}
+func NewMetricHandler(repo repository.MetricsRepository, fileStoragePath string, storeInterval int) *MetricHandler {
+	return &MetricHandler{
+		repo:            repo,
+		fileStoragePath: fileStoragePath,
+		storeInterval:   storeInterval,
+	}
+}
+
+func (h *MetricHandler) syncSave() {
+	if h.fileStoragePath != "" && h.storeInterval == 0 {
+		if err := h.repo.SaveToFile(h.fileStoragePath); err != nil {
+			logger.Log.Error("failed to save metrics to file synchronously", zap.Error(err))
+		}
+	}
 }
 
 func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +71,9 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Получаем сохраненную метрику из репозитория
+	// Выполняем синхронную запись, если интервал 0
+	h.syncSave()
+
 	saved, err := h.repo.Find(m.ID, m.MType)
 	if err != nil {
 		http.Error(w, "problem retrieving saved metric", http.StatusInternalServerError)
@@ -75,7 +89,6 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {
-
 	logger.Log.Debug("decoding request")
 	var req models.Metrics
 	dec := json.NewDecoder(r.Body)
@@ -144,6 +157,9 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "problem with save metric to repo", http.StatusInternalServerError)
 		return
 	}
+
+	// Выполняем синхронную запись, если интервал 0
+	h.syncSave()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

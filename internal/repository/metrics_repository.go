@@ -6,4 +6,6 @@ type MetricsRepository interface {
 	Save(metrics models.Metrics) error
 	Find(id string, metricType string) (models.Metrics, error)
 	FindAll() ([]models.Metrics, error)
+	SaveToFile(path string) error
+	LoadFromFile(path string) error
 }

@@ -7,22 +7,26 @@ import (
 )
 
 type Config struct {
-	Address string `env:"ADDRESS"`
+	Address         string `env:"ADDRESS"`
+	StoreInterval   int    `env:"STORE_INTERVAL"`
+	FileStoragePath string `env:"FILE_STORAGE_PATH"`
+	Restore         bool   `env:"RESTORE"`
 }
 
-var flagAddressPort string
+//var flagAddressPort string
 
-func parseFlags() {
+func LoadConfig() Config {
 	var cfg Config
-	err := env.Parse(&cfg)
-	if err != nil {
-		log.Fatal("ошибка при парсинге ENV")
-	}
 
-	flag.StringVar(&flagAddressPort, "a", "localhost:8080", "port to run server")
+	flag.StringVar(&cfg.Address, "a", "localhost:8080", "address and port to run server")
+	flag.IntVar(&cfg.StoreInterval, "i", 300, "interval in seconds to save metrics to disk")
+	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file path to store metrics")
+	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.Parse()
 
-	if cfg.Address != "" {
-		flagAddressPort = cfg.Address
+	if err := env.Parse(&cfg); err != nil {
+		log.Fatalf("ошибка при парсинге ENV: %v", err)
 	}
+
+	return cfg
 }

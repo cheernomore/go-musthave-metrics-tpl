@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"encoding/json"
 	"fmt"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
+	"os"
 	"sync"
 )
 
@@ -21,16 +23,16 @@ func (m *MemStorage) Save(metric models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	switch metric.MType {
-	case models.Counter:
-		if existing, ok := m.Metrics[metric.ID]; ok {
-			newDelta := *existing.Delta + *metric.Delta
-			metric.Delta = &newDelta
+	if metric.MType == models.Counter {
+		current, ok := m.Metrics[metric.ID]
+		if ok && current.Delta != nil {
+			// Важно: создаем новую переменную, чтобы получить уникальный адрес
+			newVal := *current.Delta + *metric.Delta
+			metric.Delta = &newVal
 		}
-		m.Metrics[metric.ID] = metric
-	case models.Gauge:
-		m.Metrics[metric.ID] = metric
 	}
+
+	m.Metrics[metric.ID] = metric
 	return nil
 }
 
@@ -38,22 +40,56 @@ func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	if val, ok := m.Metrics[id]; ok {
-		if val.MType == metricType {
-			return val, nil
-		}
+	val, ok := m.Metrics[id]
+	if !ok {
+		return models.Metrics{}, fmt.Errorf("metric %s not found", id)
+	}
+	if val.MType != metricType {
 		return models.Metrics{}, fmt.Errorf("metric %s has type %s, not %s", id, val.MType, metricType)
 	}
-	return models.Metrics{}, fmt.Errorf("metric %s not found", id)
+	return val, nil
 }
 
 func (m *MemStorage) FindAll() ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	var outputMetrics []models.Metrics
+	outputMetrics := make([]models.Metrics, 0, len(m.Metrics))
 	for _, v := range m.Metrics {
 		outputMetrics = append(outputMetrics, v)
 	}
 	return outputMetrics, nil
+}
+
+func (m *MemStorage) SaveToFile(path string) error {
+	metrics, err := m.FindAll()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.MarshalIndent(metrics, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0666)
+}
+
+func (m *MemStorage) LoadFromFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var metrics []models.Metrics
+	if err := json.Unmarshal(data, &metrics); err != nil {
+		return err
+	}
+
+	for _, metric := range metrics {
+		// Используем внутренний метод без блокировки или вызываем Save
+		// Здесь проще вызвать Save, так как файл читается один раз при старте
+		m.Save(metric)
+	}
+	return nil
 }

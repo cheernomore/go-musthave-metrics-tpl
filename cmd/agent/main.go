@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
@@ -114,21 +115,32 @@ func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendR
 		return SendResult{}, err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return SendResult{}, fmt.Errorf("ошибка сжатия: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return SendResult{}, fmt.Errorf("ошибка закрытия gzip: %w", err)
+	}
+
+	request, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("ошибка создания запроса: %w", err)
 	}
 
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip") // Сообщаем серверу о сжатии
+	request.Header.Set("Accept-Encoding", "gzip")  // Опционально: просим ответ тоже сжать
 
 	response, err := client.Do(request)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("ошибка при выполнении запроса: %w", err)
 	}
-
 	defer response.Body.Close()
 
-	fmt.Printf("Sent: %s, Status: %s\n Request: %s\n", url, response.Status, body)
+	fmt.Printf("Sent (gzipped): %s, Status: %s\n", url, response.Status)
+
 	return SendResult{
 		StatusCode: response.StatusCode,
 		Header:     response.Header.Get("Content-Type"),

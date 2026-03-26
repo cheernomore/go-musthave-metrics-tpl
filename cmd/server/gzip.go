@@ -16,19 +16,20 @@ type gzipWriter struct {
 func (w gzipWriter) Write(b []byte) (int, error) {
 	contentType := w.Header().Get("Content-Type")
 	if strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/html") {
+		w.Header().Set("Content-Encoding", "gzip")
 		return w.Writer.Write(b)
 	}
-	// Если тип не подходит, пишем как есть в оригинальный ResponseWriter
 	return w.ResponseWriter.Write(b)
 }
 
 func GzipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. РАСПАКОВКА (Input)
-		// Если клиент прислал сжатые данные, распаковываем их перед обработкой
+		// 1. РАСПАКОВКА (Входящий запрос)
+		// Проверяем наличие заголовка gzip
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
+				// Если заголовок есть, но данные битые — это ошибка
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -36,14 +37,13 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			r.Body = io.NopCloser(gz)
 		}
 
-		// 2. СЖАТИЕ (Output)
-		// Если клиент поддерживает gzip
+		// 2. СЖАТИЕ (Исходящий ответ)
+		// Проверяем, поддерживает ли клиент gzip
 		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Создаем gzip.Writer
 		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
 		if err != nil {
 			io.WriteString(w, err.Error())
@@ -51,18 +51,7 @@ func GzipMiddleware(next http.Handler) http.Handler {
 		}
 		defer gz.Close()
 
-		// Оборачиваем ResponseWriter, чтобы проверять Content-Type перед сжатием
-		gw := &gzipWriter{
-			ResponseWriter: w,
-			Writer:         gz,
-		}
-
-		// Важно: заголовки проверяются внутри обработчиков,
-		// поэтому нам нужно прокинуть логику сжатия через кастомный Writer.
-		// Чтобы сжатие работало только для нужных типов,
-		// можно добавить проверку Content-Type в методе Write (см. ниже).
-
-		w.Header().Set("Content-Encoding", "gzip")
-		next.ServeHTTP(gw, r)
+		// Передаем кастомный ResponseWriter
+		next.ServeHTTP(gzipWriter{ResponseWriter: w, Writer: gz}, r)
 	})
 }

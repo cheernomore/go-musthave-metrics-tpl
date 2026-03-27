@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"net/http"
 	"runtime"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -152,15 +151,12 @@ func getClient() http.Client {
 }
 
 func getMetricsPooler() func(m *runtime.MemStats) []Metric {
-	var pollCount int64 = 1
+	var pollCount int64 = 0
 
 	return func(m *runtime.MemStats) []Metric {
 		fmt.Println("-----METRICS UPDATED-----")
 		runtime.ReadMemStats(m)
 
-		if pollCount == 5 {
-			pollCount = 0
-		}
 		pollCount++
 
 		return []Metric{
@@ -195,36 +191,4 @@ func getMetricsPooler() func(m *runtime.MemStats) []Metric {
 			{"RandomValue", rand.Float64() * 1000, "gauge"},
 		}
 	}
-}
-
-func valueToString(metricType string, v any) string {
-	var f float64
-	var i int64
-
-	if metricType == "counter" {
-		switch t := v.(type) {
-		case int64:
-			i = t
-		case uint64:
-			i = int64(t)
-		default:
-			return "0.00"
-		}
-		return strconv.FormatInt(i, 10)
-	}
-
-	switch t := v.(type) {
-	case float64:
-		f = t
-	case uint64:
-		f = float64(t)
-	case uint32:
-		f = float64(t)
-	case int64:
-		f = float64(t)
-	default:
-		return "0.00" // или обработка ошибки
-	}
-
-	return strconv.FormatFloat(f, 'f', -1, 64)
 }

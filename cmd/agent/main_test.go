@@ -32,7 +32,7 @@ func testRequest(t *testing.T, ts *httptest.Server, method,
 func TestSendMetrics(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := handler.NewMetricHandler(repo, "", 0)
+	metricHandler := handler.NewMetricHandler(repo)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 
 	testServer := httptest.NewServer(r)

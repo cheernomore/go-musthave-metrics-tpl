@@ -22,14 +22,18 @@ func run() error {
 	}
 
 	cfg := LoadConfig()
-	repo := repository.NewMemStorage()
-
-	metricHandler := handler.NewMetricHandler(repo, cfg.FileStoragePath, cfg.StoreInterval)
+	memStorage := repository.NewMemStorage()
 
 	if cfg.Restore && cfg.FileStoragePath != "" {
-		if err := repo.LoadFromFile(cfg.FileStoragePath); err != nil {
+		if err := memStorage.LoadFromFile(cfg.FileStoragePath); err != nil {
 			logger.Log.Warn("не удалось загрузить данные из файла", zap.Error(err))
 		}
+	}
+
+	var repo repository.MetricsRepository = memStorage
+
+	if cfg.FileStoragePath != "" && cfg.StoreInterval == 0 {
+		repo = repository.NewFileBackedRepository(memStorage, cfg.FileStoragePath)
 	}
 
 	if cfg.FileStoragePath != "" && cfg.StoreInterval > 0 {
@@ -37,12 +41,14 @@ func run() error {
 			ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 			defer ticker.Stop()
 			for range ticker.C {
-				if err := repo.SaveToFile(cfg.FileStoragePath); err != nil {
+				if err := memStorage.SaveToFile(cfg.FileStoragePath); err != nil {
 					logger.Log.Error("ошибка сохранения в файл по тикеру", zap.Error(err))
 				}
 			}
 		}()
 	}
+
+	metricHandler := handler.NewMetricHandler(repo)
 
 	r := chi.NewRouter()
 

@@ -13,8 +13,6 @@ type Config struct {
 	Restore         bool   `env:"RESTORE"`
 }
 
-//var flagAddressPort string
-
 func LoadConfig() Config {
 	var cfg Config
 

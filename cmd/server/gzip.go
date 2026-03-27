@@ -7,7 +7,6 @@ import (
 	"strings"
 )
 
-// gzipWriter позволяет перехватывать запись ответа и сжимать её
 type gzipWriter struct {
 	http.ResponseWriter
 	Writer io.Writer

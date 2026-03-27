@@ -26,7 +26,6 @@ func (m *MemStorage) Save(metric models.Metrics) error {
 	if metric.MType == models.Counter {
 		current, ok := m.Metrics[metric.ID]
 		if ok && current.Delta != nil {
-			// Важно: создаем новую переменную, чтобы получить уникальный адрес
 			newVal := *current.Delta + *metric.Delta
 			metric.Delta = &newVal
 		}
@@ -87,8 +86,6 @@ func (m *MemStorage) LoadFromFile(path string) error {
 	}
 
 	for _, metric := range metrics {
-		// Используем внутренний метод без блокировки или вызываем Save
-		// Здесь проще вызвать Save, так как файл читается один раз при старте
 		m.Save(metric)
 	}
 	return nil

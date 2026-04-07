@@ -11,6 +11,7 @@ type Config struct {
 	StoreInterval   int    `env:"STORE_INTERVAL"`
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
+	DatabaseDSN     string `env:"DATABASE_DSN"`
 }
 
 func LoadConfig() Config {
@@ -20,6 +21,7 @@ func LoadConfig() Config {
 	flag.IntVar(&cfg.StoreInterval, "i", 300, "interval in seconds to save metrics to disk")
 	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file path to store metrics")
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
+	flag.StringVar(&cfg.DatabaseDSN, "d", "host=localhost user=user password=password dbname=dbname", "connect to db")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

@@ -7,7 +7,7 @@ import (
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
-	_ "github.com/jackc/pgx"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 	"net/http"
 	"time"

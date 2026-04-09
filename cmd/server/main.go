@@ -19,7 +19,7 @@ func main() {
 	}
 }
 
-var db sql.DB
+var db *sql.DB
 
 func run() error {
 	if err := logger.Initialize("info"); err != nil {
@@ -30,19 +30,29 @@ func run() error {
 	cfg := LoadConfig()
 	logger.Log.Info("--- end config loading ---")
 
-	logger.Log.Info("--- start connection to db")
-	db, err := sql.Open("pgx", cfg.DatabaseDSN)
-	if err != nil {
-		panic(err)
+	// Подключение к БД опционально
+	if cfg.DatabaseDSN != "" {
+		logger.Log.Info("--- start connection to db")
+		var err error
+		db, err = sql.Open("pgx", cfg.DatabaseDSN)
+		if err != nil {
+			logger.Log.Warn("не удалось открыть соединение с БД, продолжаем работу без БД", zap.Error(err))
+			db = nil
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			if err = db.PingContext(ctx); err != nil {
+				logger.Log.Warn("не удалось подключиться к БД, продолжаем работу без БД", zap.Error(err))
+				db.Close()
+				db = nil
+			} else {
+				defer db.Close()
+				logger.Log.Info("--- end connection to db")
+			}
+		}
+	} else {
+		logger.Log.Info("DATABASE_DSN не указан, работаем без БД")
 	}
-	defer db.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	defer cancel()
-	if err = db.PingContext(ctx); err != nil {
-		panic(err)
-	}
-	logger.Log.Info("--- end connection to db")
 
 	memStorage := repository.NewMemStorage()
 
@@ -91,9 +101,16 @@ func run() error {
 }
 
 func ping(w http.ResponseWriter, r *http.Request) {
+	if db == nil {
+		http.Error(w, "database connection not configured", http.StatusInternalServerError)
+		return
+	}
+
 	err := db.Ping()
 	if err != nil {
 		http.Error(w, "db not ready", http.StatusInternalServerError)
+		return
 	}
-	w.WriteHeader(200)
+
+	w.WriteHeader(http.StatusOK)
 }

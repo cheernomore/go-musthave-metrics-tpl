@@ -55,6 +55,11 @@ func main() {
 		copy(localMetrics, metrics)
 		mu.Unlock()
 
+		if len(localMetrics) == 0 {
+			continue
+		}
+
+		batch := make([]models.Metrics, 0, len(localMetrics))
 		for _, metric := range localMetrics {
 			payload := models.Metrics{
 				ID:    metric.Name,
@@ -100,12 +105,52 @@ func main() {
 				}
 			}
 
-			_, err := SendMetrics("http://"+flagAddressPort+"/update", payload, &client)
-			if err != nil {
-				fmt.Printf("Error sending metric [%s, type=%s]: %v\n", metric.Name, metric.Type, err)
-			}
+			batch = append(batch, payload)
+		}
+
+		_, err := SendMetricsBatch("http://"+flagAddressPort+"/updates/", batch, &client)
+		if err != nil {
+			fmt.Printf("Error sending metrics batch: %v\n", err)
 		}
 	}
+}
+
+func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client) (SendResult, error) {
+	body, err := json.Marshal(metrics)
+	if err != nil {
+		return SendResult{}, err
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(body); err != nil {
+		return SendResult{}, fmt.Errorf("gzip compression error: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return SendResult{}, fmt.Errorf("gzip close error: %w", err)
+	}
+
+	request, err := http.NewRequest(http.MethodPost, url, &buf)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("request creation error: %w", err)
+	}
+
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Content-Encoding", "gzip")
+	request.Header.Set("Accept-Encoding", "gzip")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return SendResult{}, fmt.Errorf("request execution error: %w", err)
+	}
+	defer response.Body.Close()
+
+	fmt.Printf("Sent batch (gzipped) to %s, Status: %s\n", url, response.Status)
+
+	return SendResult{
+		StatusCode: response.StatusCode,
+		Header:     response.Header.Get("Content-Type"),
+	}, nil
 }
 
 func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendResult, error) {
@@ -117,24 +162,24 @@ func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendR
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if _, err := gz.Write(body); err != nil {
-		return SendResult{}, fmt.Errorf("ошибка сжатия: %w", err)
+		return SendResult{}, fmt.Errorf("gzip compression error: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		return SendResult{}, fmt.Errorf("ошибка закрытия gzip: %w", err)
+		return SendResult{}, fmt.Errorf("gzip close error: %w", err)
 	}
 
 	request, err := http.NewRequest(http.MethodPost, url, &buf)
 	if err != nil {
-		return SendResult{}, fmt.Errorf("ошибка создания запроса: %w", err)
+		return SendResult{}, fmt.Errorf("request creation error: %w", err)
 	}
 
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Content-Encoding", "gzip") // Сообщаем серверу о сжатии
-	request.Header.Set("Accept-Encoding", "gzip")  // Опционально: просим ответ тоже сжать
+	request.Header.Set("Content-Encoding", "gzip")
+	request.Header.Set("Accept-Encoding", "gzip")
 
 	response, err := client.Do(request)
 	if err != nil {
-		return SendResult{}, fmt.Errorf("ошибка при выполнении запроса: %w", err)
+		return SendResult{}, fmt.Errorf("request execution error: %w", err)
 	}
 	defer response.Body.Close()
 

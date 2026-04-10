@@ -110,6 +110,7 @@ func run() error {
 	r.Use(logger.RequestLogger)
 	r.Use(GzipMiddleware)
 
+	r.Post("/updates/", metricHandler.Updates)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	r.Post("/update", metricHandler.UpdateNew)
 	r.Post("/update/", metricHandler.UpdateNew)

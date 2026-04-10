@@ -21,7 +21,6 @@ func (p *PostgresRepository) Save(metric models.Metrics) error {
 	defer cancel()
 
 	if metric.MType == models.Counter {
-		// Для counter используем UPSERT с INCREMENT
 		query := `
 			INSERT INTO metrics (name, type, delta, value)
 			VALUES ($1, $2, $3, NULL)
@@ -32,7 +31,6 @@ func (p *PostgresRepository) Save(metric models.Metrics) error {
 		return err
 	}
 
-	// Для gauge используем простой UPSERT
 	query := `
 		INSERT INTO metrics (name, type, delta, value)
 		VALUES ($1, $2, NULL, $3)
@@ -41,6 +39,52 @@ func (p *PostgresRepository) Save(metric models.Metrics) error {
 	`
 	_, err := p.db.ExecContext(ctx, query, metric.ID, metric.MType, metric.Value)
 	return err
+}
+
+func (p *PostgresRepository) SaveBatch(metrics []models.Metrics) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	counterStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO metrics (name, type, delta, value)
+		VALUES ($1, $2, $3, NULL)
+		ON CONFLICT (name) DO UPDATE
+		SET delta = metrics.delta + EXCLUDED.delta
+	`)
+	if err != nil {
+		return err
+	}
+	defer counterStmt.Close()
+
+	gaugeStmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO metrics (name, type, delta, value)
+		VALUES ($1, $2, NULL, $3)
+		ON CONFLICT (name) DO UPDATE
+		SET value = EXCLUDED.value
+	`)
+	if err != nil {
+		return err
+	}
+	defer gaugeStmt.Close()
+
+	for _, metric := range metrics {
+		if metric.MType == models.Counter {
+			_, err = counterStmt.ExecContext(ctx, metric.ID, metric.MType, metric.Delta)
+		} else {
+			_, err = gaugeStmt.ExecContext(ctx, metric.ID, metric.MType, metric.Value)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func (p *PostgresRepository) Find(id string, metricType string) (models.Metrics, error) {

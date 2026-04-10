@@ -35,6 +35,23 @@ func (m *MemStorage) Save(metric models.Metrics) error {
 	return nil
 }
 
+func (m *MemStorage) SaveBatch(metrics []models.Metrics) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, metric := range metrics {
+		if metric.MType == models.Counter {
+			current, ok := m.Metrics[metric.ID]
+			if ok && current.Delta != nil {
+				newVal := *current.Delta + *metric.Delta
+				metric.Delta = &newVal
+			}
+		}
+		m.Metrics[metric.ID] = metric
+	}
+	return nil
+}
+
 func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

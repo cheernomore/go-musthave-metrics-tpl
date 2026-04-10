@@ -22,6 +22,29 @@ func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {
 	}
 }
 
+func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
+	var metrics []models.Metrics
+
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&metrics); err != nil {
+		logger.Log.Debug("cannot decode request JSON body", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if len(metrics) == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if err := h.repo.SaveBatch(metrics); err != nil {
+		http.Error(w, "problem with save metrics to repo", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 	var m models.Metrics
 

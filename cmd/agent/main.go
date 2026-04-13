@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
 	"math/rand"
+	"net"
 	"net/http"
 	"runtime"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -108,9 +112,14 @@ func main() {
 			batch = append(batch, payload)
 		}
 
-		_, err := SendMetricsBatch("http://"+flagAddressPort+"/updates/", batch, &client)
+		// Отправка метрик с retry логикой
+		err := retry.WithRetry(func() error {
+			_, err := SendMetricsBatch("http://"+flagAddressPort+"/updates/", batch, &client)
+			return err
+		}, isRetriableError)
+
 		if err != nil {
-			fmt.Printf("Error sending metrics batch: %v\n", err)
+			fmt.Printf("Failed to send metrics batch after retries: %v\n", err)
 		}
 	}
 }
@@ -193,6 +202,35 @@ func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendR
 
 func getClient() http.Client {
 	return http.Client{}
+}
+
+// isRetriableError определяет, является ли ошибка временной (retriable)
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Проверка на сетевые ошибки (connection refused, timeout, etc.)
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		// Временные сетевые ошибки и таймауты
+		return netErr.Timeout() || netErr.Temporary()
+	}
+
+	// Проверка на конкретные системные ошибки
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+
+	// DNS ошибки
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return dnsErr.Temporary()
+	}
+
+	return false
 }
 
 func getMetricsPooler() func(m *runtime.MemStats) []Metric {

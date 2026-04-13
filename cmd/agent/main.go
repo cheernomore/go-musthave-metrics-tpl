@@ -210,24 +210,33 @@ func isRetriableError(err error) bool {
 		return false
 	}
 
-	// Проверка на сетевые ошибки (connection refused, timeout, etc.)
+	// Проверка на таймауты
 	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// Временные сетевые ошибки и таймауты
-		return netErr.Timeout() || netErr.Temporary()
-	}
-
-	// Проверка на конкретные системные ошибки
-	if errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.ETIMEDOUT) {
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
 
-	// DNS ошибки
+	// Проверка на конкретные системные ошибки соединения
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, syscall.ECONNABORTED) ||
+		errors.Is(err, syscall.ENETUNREACH) ||
+		errors.Is(err, syscall.EHOSTUNREACH) {
+		return true
+	}
+
+	// Проверка на net.OpError для детального анализа
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		// Повторяем для вложенных ошибок
+		return isRetriableError(opErr.Err)
+	}
+
+	// DNS ошибки с таймаутом
 	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return dnsErr.Temporary()
+	if errors.As(err, &dnsErr) && dnsErr.IsTimeout {
+		return true
 	}
 
 	return false

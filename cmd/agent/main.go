@@ -124,22 +124,30 @@ func main() {
 	}
 }
 
+func compressData(data []byte) (*bytes.Buffer, error) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return nil, fmt.Errorf("gzip compression error: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return nil, fmt.Errorf("gzip close error: %w", err)
+	}
+	return &buf, nil
+}
+
 func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return SendResult{}, err
 	}
 
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(body); err != nil {
-		return SendResult{}, fmt.Errorf("gzip compression error: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		return SendResult{}, fmt.Errorf("gzip close error: %w", err)
+	buf, err := compressData(body)
+	if err != nil {
+		return SendResult{}, err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, url, &buf)
+	request, err := http.NewRequest(http.MethodPost, url, buf)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("request creation error: %w", err)
 	}
@@ -168,16 +176,12 @@ func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendR
 		return SendResult{}, err
 	}
 
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	if _, err := gz.Write(body); err != nil {
-		return SendResult{}, fmt.Errorf("gzip compression error: %w", err)
-	}
-	if err := gz.Close(); err != nil {
-		return SendResult{}, fmt.Errorf("gzip close error: %w", err)
+	buf, err := compressData(body)
+	if err != nil {
+		return SendResult{}, err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, url, &buf)
+	request, err := http.NewRequest(http.MethodPost, url, buf)
 	if err != nil {
 		return SendResult{}, fmt.Errorf("request creation error: %w", err)
 	}

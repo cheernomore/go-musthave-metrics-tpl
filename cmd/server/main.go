@@ -16,15 +16,22 @@ import (
 	"time"
 )
 
+type Server struct {
+	db *sql.DB
+}
+
+func NewServer() *Server {
+	return &Server{}
+}
+
 func main() {
 	if err := run(); err != nil {
 		panic(err)
 	}
 }
 
-var db *sql.DB
-
 func run() error {
+	srv := NewServer()
 	if err := logger.Initialize("info"); err != nil {
 		return err
 	}
@@ -38,28 +45,28 @@ func run() error {
 	if cfg.DatabaseDSN != "" {
 		logger.Log.Info("--- start connection to db")
 		var err error
-		db, err = sql.Open("pgx", cfg.DatabaseDSN)
+		srv.db, err = sql.Open("pgx", cfg.DatabaseDSN)
 		if err != nil {
 			logger.Log.Warn("не удалось открыть соединение с БД, fallback на файловое хранилище", zap.Error(err))
-			db = nil
+			srv.db = nil
 		} else {
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
-			if err = db.PingContext(ctx); err != nil {
+			if err = srv.db.PingContext(ctx); err != nil {
 				logger.Log.Warn("не удалось подключиться к БД, fallback на файловое хранилище", zap.Error(err))
-				db.Close()
-				db = nil
+				srv.db.Close()
+				srv.db = nil
 			} else {
-				defer db.Close()
+				defer srv.db.Close()
 				logger.Log.Info("--- успешное подключение к БД")
 
-				if err := runMigrations(db); err != nil {
+				if err := runMigrations(srv.db); err != nil {
 					logger.Log.Warn("не удалось применить миграции, fallback на файловое хранилище", zap.Error(err))
-					db.Close()
-					db = nil
+					srv.db.Close()
+					srv.db = nil
 				} else {
 					logger.Log.Info("используем PostgreSQL для хранения метрик")
-					repo = repository.NewPostgresRepository(db)
+					repo = repository.NewPostgresRepository(srv.db)
 				}
 			}
 		}
@@ -117,7 +124,7 @@ func run() error {
 	r.Post("/value", metricHandler.Value)
 	r.Post("/value/", metricHandler.Value)
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
-	r.Get("/ping", ping)
+	r.Get("/ping", srv.ping)
 	r.Get("/", metricHandler.Index)
 
 	logger.Log.Info("Running server", zap.String("address", cfg.Address))
@@ -142,13 +149,16 @@ func runMigrations(db *sql.DB) error {
 	return nil
 }
 
-func ping(w http.ResponseWriter, r *http.Request) {
-	if db == nil {
+func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
 		http.Error(w, "database connection not configured", http.StatusInternalServerError)
 		return
 	}
 
-	err := db.Ping()
+	ctx, cancel := context.WithTimeout(r.Context(), 1*time.Second)
+	defer cancel()
+
+	err := s.db.PingContext(ctx)
 	if err != nil {
 		http.Error(w, "db not ready", http.StatusInternalServerError)
 		return

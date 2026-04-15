@@ -103,7 +103,9 @@ func (m *MemStorage) LoadFromFile(path string) error {
 	}
 
 	for _, metric := range metrics {
-		m.Save(metric)
+		if err := m.Save(metric); err != nil {
+			return fmt.Errorf("failed to save metric %s: %w", metric.ID, err)
+		}
 	}
 	return nil
 }

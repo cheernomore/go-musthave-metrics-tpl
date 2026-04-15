@@ -134,7 +134,7 @@ func (p *PostgresRepository) Find(id string, metricType string) (models.Metrics,
 			&value,
 		)
 
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("metric %s not found", id)
 		}
 		if err != nil {

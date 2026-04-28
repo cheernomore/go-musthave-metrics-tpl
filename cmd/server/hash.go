@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+	"strings"
 )
 
 func calculateHash(data []byte, key string) string {
@@ -52,17 +53,19 @@ func HashValidationMiddleware(key string) func(http.Handler) http.Handler {
 
 type responseWriterWithHash struct {
 	http.ResponseWriter
-	body   *bytes.Buffer
-	status int
-	key    string
+	body    *bytes.Buffer
+	status  int
+	key     string
+	request *http.Request
 }
 
-func newResponseWriterWithHash(w http.ResponseWriter, key string) *responseWriterWithHash {
+func newResponseWriterWithHash(w http.ResponseWriter, key string, r *http.Request) *responseWriterWithHash {
 	return &responseWriterWithHash{
 		ResponseWriter: w,
 		body:           &bytes.Buffer{},
 		status:         http.StatusOK,
 		key:            key,
+		request:        r,
 	}
 }
 
@@ -80,6 +83,12 @@ func (rw *responseWriterWithHash) flush() {
 		hash := calculateHash(rw.body.Bytes(), rw.key)
 		rw.ResponseWriter.Header().Set("HashSHA256", hash)
 	}
+	
+	contentType := rw.Header().Get("Content-Type")
+	acceptsGzip := strings.Contains(rw.request.Header.Get("Accept-Encoding"), "gzip")
+	if acceptsGzip && (strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/html")) {
+		rw.ResponseWriter.Header().Set("Content-Encoding", "gzip")
+	}
 
 	rw.ResponseWriter.WriteHeader(rw.status)
 	rw.ResponseWriter.Write(rw.body.Bytes())
@@ -93,7 +102,7 @@ func HashResponseMiddleware(key string) func(http.Handler) http.Handler {
 				return
 			}
 
-			wrapped := newResponseWriterWithHash(w, key)
+			wrapped := newResponseWriterWithHash(w, key, r)
 
 			next.ServeHTTP(wrapped, r)
 

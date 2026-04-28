@@ -116,6 +116,8 @@ func run() error {
 
 	r.Use(logger.RequestLogger)
 	r.Use(GzipMiddleware)
+	r.Use(HashValidationMiddleware(cfg.Key))
+	r.Use(HashResponseMiddleware(cfg.Key))
 
 	r.Post("/updates/", metricHandler.Updates)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)

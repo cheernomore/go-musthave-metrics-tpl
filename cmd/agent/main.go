@@ -3,6 +3,9 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -136,6 +139,12 @@ func compressData(data []byte) (*bytes.Buffer, error) {
 	return &buf, nil
 }
 
+func calculateHash(data []byte, key string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {
@@ -155,6 +164,11 @@ func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
 	request.Header.Set("Accept-Encoding", "gzip")
+
+	if flagKey != "" {
+		hash := calculateHash(body, flagKey)
+		request.Header.Set("HashSHA256", hash)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -189,6 +203,11 @@ func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendR
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
 	request.Header.Set("Accept-Encoding", "gzip")
+
+	if flagKey != "" {
+		hash := calculateHash(body, flagKey)
+		request.Header.Set("HashSHA256", hash)
+	}
 
 	response, err := client.Do(request)
 	if err != nil {

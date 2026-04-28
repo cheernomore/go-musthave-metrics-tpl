@@ -12,6 +12,7 @@ type Config struct {
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
+	Key             string `env:"KEY"`
 }
 
 func LoadConfig() Config {
@@ -22,6 +23,7 @@ func LoadConfig() Config {
 	flag.StringVar(&cfg.FileStoragePath, "f", "/tmp/metrics-db.json", "file path to store metrics")
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "connect to db")
+	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

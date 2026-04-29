@@ -11,12 +11,14 @@ type Config struct {
 	ReportInterval *int   `env:"REPORT_INTERVAL"`
 	PollInterval   *int   `env:"POLL_INTERVAL"`
 	Key            string `env:"KEY"`
+	RateLimit      *int   `env:"RATE_LIMIT"`
 }
 
 var flagAddressPort string
 var flagReportInterval int
 var flagPollInterval int
 var flagKey string
+var flagRateLimit int
 
 func parseFlags() {
 	var cfg Config
@@ -29,6 +31,7 @@ func parseFlags() {
 	flag.IntVar(&flagReportInterval, "r", 10, "interval between metrics sending")
 	flag.IntVar(&flagPollInterval, "p", 2, "interval between metrics pooling")
 	flag.StringVar(&flagKey, "k", "", "key for signing requests")
+	flag.IntVar(&flagRateLimit, "l", 1, "max concurrent outgoing requests")
 	flag.Parse()
 
 	if cfg.Address != "" {
@@ -45,5 +48,9 @@ func parseFlags() {
 
 	if cfg.Key != "" {
 		flagKey = cfg.Key
+	}
+
+	if cfg.RateLimit != nil {
+		flagRateLimit = *cfg.RateLimit
 	}
 }

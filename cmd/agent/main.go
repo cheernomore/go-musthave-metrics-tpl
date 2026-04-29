@@ -11,6 +11,8 @@ import (
 	"fmt"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 	"math/rand"
 	"net"
 	"net/http"
@@ -33,10 +35,10 @@ type SendResult struct {
 
 func main() {
 	parseFlags()
-	var m runtime.MemStats
-	var metrics []Metric
 
 	var mu sync.Mutex
+	var runtimeMetrics []Metric
+	var extraMetrics []Metric
 
 	metricsPooler := getMetricsPooler()
 	client := getClient()
@@ -44,87 +46,144 @@ func main() {
 	pollInterval := time.Duration(flagPollInterval) * time.Second
 	reportInterval := time.Duration(flagReportInterval) * time.Second
 
+	var memStats runtime.MemStats
 	go func() {
 		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
 		for range ticker.C {
 			mu.Lock()
-			metrics = metricsPooler(&m)
+			runtimeMetrics = metricsPooler(&memStats)
 			mu.Unlock()
 		}
 	}()
 
-	updateMetricsTicker := time.NewTicker(reportInterval)
-	defer updateMetricsTicker.Stop()
+	go func() {
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			mu.Lock()
+			extraMetrics = collectGopsutilMetrics()
+			mu.Unlock()
+		}
+	}()
 
-	for range updateMetricsTicker.C {
+	jobs := make(chan models.Metrics, 1000)
+
+	rateLimit := flagRateLimit
+	if rateLimit < 1 {
+		rateLimit = 1
+	}
+	for range rateLimit {
+		go func() {
+			for job := range jobs {
+				err := retry.WithRetry(func() error {
+					_, err := SendMetrics("http://"+flagAddressPort+"/update/", job, &client)
+					return err
+				}, isRetriableError)
+				if err != nil {
+					fmt.Printf("Failed to send metric after retries: %v\n", err)
+				}
+			}
+		}()
+	}
+
+	reportTicker := time.NewTicker(reportInterval)
+	defer reportTicker.Stop()
+
+	for range reportTicker.C {
 		mu.Lock()
-		localMetrics := make([]Metric, len(metrics))
-		copy(localMetrics, metrics)
+		all := make([]Metric, 0, len(runtimeMetrics)+len(extraMetrics))
+		all = append(all, runtimeMetrics...)
+		all = append(all, extraMetrics...)
 		mu.Unlock()
 
-		if len(localMetrics) == 0 {
+		if len(all) == 0 {
 			continue
 		}
 
-		batch := make([]models.Metrics, 0, len(localMetrics))
-		for _, metric := range localMetrics {
-			payload := models.Metrics{
-				ID:    metric.Name,
-				MType: metric.Type,
+		for _, metric := range all {
+			payload, ok := convertToModel(metric)
+			if !ok {
+				continue
 			}
-
-			switch v := metric.Value.(type) {
-			case float64:
-				payload.Value = &v
-			case int64:
-				payload.Delta = &v
-			case uint64:
-				if metric.Type == "gauge" {
-					floatVal := float64(v)
-					payload.Value = &floatVal
-				} else {
-					intVal := int64(v)
-					payload.Delta = &intVal
-				}
-			case uint32:
-				if metric.Type == "gauge" {
-					floatVal := float64(v)
-					payload.Value = &floatVal
-				} else {
-					intVal := int64(v)
-					payload.Delta = &intVal
-				}
-			case uint16:
-				if metric.Type == "gauge" {
-					floatVal := float64(v)
-					payload.Value = &floatVal
-				} else {
-					intVal := int64(v)
-					payload.Delta = &intVal
-				}
-			case uint8:
-				if metric.Type == "gauge" {
-					floatVal := float64(v)
-					payload.Value = &floatVal
-				} else {
-					intVal := int64(v)
-					payload.Delta = &intVal
-				}
-			}
-
-			batch = append(batch, payload)
-		}
-
-		// Отправка метрик с retry логикой
-		err := retry.WithRetry(func() error {
-			_, err := SendMetricsBatch("http://"+flagAddressPort+"/updates/", batch, &client)
-			return err
-		}, isRetriableError)
-
-		if err != nil {
-			fmt.Printf("Failed to send metrics batch after retries: %v\n", err)
+			jobs <- payload
 		}
 	}
+}
+
+func convertToModel(metric Metric) (models.Metrics, bool) {
+	payload := models.Metrics{
+		ID:    metric.Name,
+		MType: metric.Type,
+	}
+
+	switch v := metric.Value.(type) {
+	case float64:
+		payload.Value = &v
+	case int64:
+		payload.Delta = &v
+	case uint64:
+		if metric.Type == "gauge" {
+			f := float64(v)
+			payload.Value = &f
+		} else {
+			i := int64(v)
+			payload.Delta = &i
+		}
+	case uint32:
+		if metric.Type == "gauge" {
+			f := float64(v)
+			payload.Value = &f
+		} else {
+			i := int64(v)
+			payload.Delta = &i
+		}
+	case uint16:
+		if metric.Type == "gauge" {
+			f := float64(v)
+			payload.Value = &f
+		} else {
+			i := int64(v)
+			payload.Delta = &i
+		}
+	case uint8:
+		if metric.Type == "gauge" {
+			f := float64(v)
+			payload.Value = &f
+		} else {
+			i := int64(v)
+			payload.Delta = &i
+		}
+	default:
+		return models.Metrics{}, false
+	}
+
+	return payload, true
+}
+
+func collectGopsutilMetrics() []Metric {
+	var result []Metric
+
+	vmStat, err := mem.VirtualMemory()
+	if err == nil {
+		result = append(result,
+			Metric{"TotalMemory", float64(vmStat.Total), "gauge"},
+			Metric{"FreeMemory", float64(vmStat.Free), "gauge"},
+		)
+	}
+
+	cpuPercents, err := cpu.Percent(0, true)
+	if err == nil {
+		for i, p := range cpuPercents {
+			result = append(result, Metric{
+				fmt.Sprintf("CPUutilization%d", i+1),
+				p,
+				"gauge",
+			})
+		}
+	}
+
+	return result
 }
 
 func compressData(data []byte) (*bytes.Buffer, error) {
@@ -227,19 +286,16 @@ func getClient() http.Client {
 	return http.Client{}
 }
 
-// isRetriableError определяет, является ли ошибка временной (retriable)
 func isRetriableError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Проверка на таймауты
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
 
-	// Проверка на конкретные системные ошибки соединения
 	if errors.Is(err, syscall.ECONNREFUSED) ||
 		errors.Is(err, syscall.ECONNRESET) ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
@@ -249,14 +305,11 @@ func isRetriableError(err error) bool {
 		return true
 	}
 
-	// Проверка на net.OpError для детального анализа
 	var opErr *net.OpError
 	if errors.As(err, &opErr) {
-		// Повторяем для вложенных ошибок
 		return isRetriableError(opErr.Err)
 	}
 
-	// DNS ошибки с таймаутом
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) && dnsErr.IsTimeout {
 		return true

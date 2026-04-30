@@ -34,7 +34,7 @@ type SendResult struct {
 }
 
 func main() {
-	parseFlags()
+	cfg := parseFlags()
 
 	var mu sync.Mutex
 	var runtimeMetrics []Metric
@@ -43,8 +43,8 @@ func main() {
 	metricsPooler := getMetricsPooler()
 	client := getClient()
 
-	pollInterval := time.Duration(flagPollInterval) * time.Second
-	reportInterval := time.Duration(flagReportInterval) * time.Second
+	pollInterval := time.Duration(cfg.PollInterval) * time.Second
+	reportInterval := time.Duration(cfg.ReportInterval) * time.Second
 
 	var memStats runtime.MemStats
 	go func() {
@@ -67,21 +67,21 @@ func main() {
 		}
 	}()
 
-	jobs := make(chan models.Metrics, 1000)
+	jobs := make(chan []models.Metrics, 10)
 
-	rateLimit := flagRateLimit
+	rateLimit := cfg.RateLimit
 	if rateLimit < 1 {
 		rateLimit = 1
 	}
 	for range rateLimit {
 		go func() {
-			for job := range jobs {
+			for batch := range jobs {
 				err := retry.WithRetry(func() error {
-					_, err := SendMetrics("http://"+flagAddressPort+"/update/", job, &client)
+					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, cfg.Key, &client)
 					return err
 				}, isRetriableError)
 				if err != nil {
-					fmt.Printf("Failed to send metric after retries: %v\n", err)
+					fmt.Printf("Failed to send metrics batch after retries: %v\n", err)
 				}
 			}
 		}()
@@ -101,13 +101,14 @@ func main() {
 			continue
 		}
 
+		batch := make([]models.Metrics, 0, len(all))
 		for _, metric := range all {
-			payload, ok := convertToModel(metric)
-			if !ok {
-				continue
+			if payload, ok := convertToModel(metric); ok {
+				batch = append(batch, payload)
 			}
-			jobs <- payload
 		}
+
+		jobs <- batch
 	}
 }
 
@@ -204,7 +205,7 @@ func calculateHash(data []byte, key string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client) (SendResult, error) {
+func SendMetricsBatch(url string, metrics []models.Metrics, key string, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return SendResult{}, err
@@ -224,8 +225,8 @@ func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client)
 	request.Header.Set("Content-Encoding", "gzip")
 	request.Header.Set("Accept-Encoding", "gzip")
 
-	if flagKey != "" {
-		hash := calculateHash(body, flagKey)
+	if key != "" {
+		hash := calculateHash(body, key)
 		request.Header.Set("HashSHA256", hash)
 	}
 
@@ -236,45 +237,6 @@ func SendMetricsBatch(url string, metrics []models.Metrics, client *http.Client)
 	defer response.Body.Close()
 
 	fmt.Printf("Sent batch (gzipped) to %s, Status: %s\n", url, response.Status)
-
-	return SendResult{
-		StatusCode: response.StatusCode,
-		Header:     response.Header.Get("Content-Type"),
-	}, nil
-}
-
-func SendMetrics(url string, metrics models.Metrics, client *http.Client) (SendResult, error) {
-	body, err := json.Marshal(metrics)
-	if err != nil {
-		return SendResult{}, err
-	}
-
-	buf, err := compressData(body)
-	if err != nil {
-		return SendResult{}, err
-	}
-
-	request, err := http.NewRequest(http.MethodPost, url, buf)
-	if err != nil {
-		return SendResult{}, fmt.Errorf("request creation error: %w", err)
-	}
-
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Content-Encoding", "gzip")
-	request.Header.Set("Accept-Encoding", "gzip")
-
-	if flagKey != "" {
-		hash := calculateHash(body, flagKey)
-		request.Header.Set("HashSHA256", hash)
-	}
-
-	response, err := client.Do(request)
-	if err != nil {
-		return SendResult{}, fmt.Errorf("request execution error: %w", err)
-	}
-	defer response.Body.Close()
-
-	fmt.Printf("Sent (gzipped): %s, Status: %s\n", url, response.Status)
 
 	return SendResult{
 		StatusCode: response.StatusCode,

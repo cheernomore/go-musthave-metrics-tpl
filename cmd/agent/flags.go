@@ -8,49 +8,25 @@ import (
 
 type Config struct {
 	Address        string `env:"ADDRESS"`
-	ReportInterval *int   `env:"REPORT_INTERVAL"`
-	PollInterval   *int   `env:"POLL_INTERVAL"`
+	ReportInterval int    `env:"REPORT_INTERVAL"`
+	PollInterval   int    `env:"POLL_INTERVAL"`
 	Key            string `env:"KEY"`
-	RateLimit      *int   `env:"RATE_LIMIT"`
+	RateLimit      int    `env:"RATE_LIMIT"`
 }
 
-var flagAddressPort string
-var flagReportInterval int
-var flagPollInterval int
-var flagKey string
-var flagRateLimit int
-
-func parseFlags() {
+func parseFlags() Config {
 	var cfg Config
-	err := env.Parse(&cfg)
-	if err != nil {
+
+	flag.StringVar(&cfg.Address, "a", "localhost:8080", "port to run server")
+	flag.IntVar(&cfg.ReportInterval, "r", 10, "interval between metrics sending")
+	flag.IntVar(&cfg.PollInterval, "p", 2, "interval between metrics pooling")
+	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
+	flag.IntVar(&cfg.RateLimit, "l", 1, "max concurrent outgoing requests")
+	flag.Parse()
+
+	if err := env.Parse(&cfg); err != nil {
 		log.Fatal("ошибка при парсинге конфига")
 	}
 
-	flag.StringVar(&flagAddressPort, "a", "localhost:8080", "port to run server")
-	flag.IntVar(&flagReportInterval, "r", 10, "interval between metrics sending")
-	flag.IntVar(&flagPollInterval, "p", 2, "interval between metrics pooling")
-	flag.StringVar(&flagKey, "k", "", "key for signing requests")
-	flag.IntVar(&flagRateLimit, "l", 1, "max concurrent outgoing requests")
-	flag.Parse()
-
-	if cfg.Address != "" {
-		flagAddressPort = cfg.Address
-	}
-
-	if cfg.ReportInterval != nil {
-		flagReportInterval = *cfg.ReportInterval
-	}
-
-	if cfg.PollInterval != nil {
-		flagPollInterval = *cfg.PollInterval
-	}
-
-	if cfg.Key != "" {
-		flagKey = cfg.Key
-	}
-
-	if cfg.RateLimit != nil {
-		flagRateLimit = *cfg.RateLimit
-	}
+	return cfg
 }

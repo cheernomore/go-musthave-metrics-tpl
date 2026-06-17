@@ -55,7 +55,7 @@ func testJSONRequest(t *testing.T, ts *httptest.Server, method,
 func TestMetricHandler_Get(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, nil)
 
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)
 	ts := httptest.NewServer(r)
@@ -91,7 +91,7 @@ func TestMetricHandler_Get(t *testing.T) {
 func TestMetricHandler_Update(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, nil)
 	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -137,7 +137,7 @@ func TestMetricHandler_Update(t *testing.T) {
 func TestMetricHandler_UpdateNew(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, nil)
 	r.Post("/update", metricHandler.UpdateNew)
 	ts := httptest.NewServer(r)
 	defer ts.Close()
@@ -226,7 +226,7 @@ func TestMetricHandler_UpdateNew(t *testing.T) {
 func TestMetricHandler_Value(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, nil)
 
 	// Setup: добавляем метрики
 	gaugeValue := 123.45
@@ -311,7 +311,7 @@ func TestMetricHandler_Value(t *testing.T) {
 func TestMetricHandler_Index(t *testing.T) {
 	r := chi.NewRouter()
 	repo := repository.NewMemStorage()
-	metricHandler := NewMetricHandler(repo)
+	metricHandler := NewMetricHandler(repo, nil)
 
 	// Setup: добавляем метрики
 	gaugeValue := 123.45

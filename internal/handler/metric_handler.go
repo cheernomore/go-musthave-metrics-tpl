@@ -2,24 +2,62 @@ package handler
 
 import (
 	"encoding/json"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 	"html/template"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
 type MetricHandler struct {
-	repo repository.MetricsRepository
+	repo    repository.MetricsRepository
+	auditor *audit.Subject
 }
 
-func NewMetricHandler(repo repository.MetricsRepository) *MetricHandler {
+func NewMetricHandler(repo repository.MetricsRepository, auditor *audit.Subject) *MetricHandler {
 	return &MetricHandler{
-		repo: repo,
+		repo:    repo,
+		auditor: auditor,
 	}
+}
+
+// audit формирует событие аудита по обработанным метрикам и рассылает его
+// всем приёмникам. Если аудит отключён, вызов ничего не делает.
+func (h *MetricHandler) audit(r *http.Request, metricNames []string) {
+	if !h.auditor.HasObservers() {
+		return
+	}
+
+	h.auditor.Notify(audit.Event{
+		Timestamp: time.Now().Unix(),
+		Metrics:   metricNames,
+		IPAddress: clientIP(r),
+	})
+}
+
+// clientIP определяет IP-адрес входящего запроса, учитывая заголовки прокси.
+func clientIP(r *http.Request) string {
+	if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); ip != "" {
+		return ip
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if i := strings.IndexByte(fwd, ','); i >= 0 {
+			return strings.TrimSpace(fwd[:i])
+		}
+		return strings.TrimSpace(fwd)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +79,12 @@ func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "problem with save metrics to repo", http.StatusInternalServerError)
 		return
 	}
+
+	names := make([]string, 0, len(metrics))
+	for _, m := range metrics {
+		names = append(names, m.ID)
+	}
+	h.audit(r, names)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -87,6 +131,8 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "problem retrieving saved metric", http.StatusInternalServerError)
 		return
 	}
+
+	h.audit(r, []string{m.ID})
 
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
@@ -165,6 +211,8 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "problem with save metric to repo", http.StatusInternalServerError)
 		return
 	}
+
+	h.audit(r, []string{m.ID})
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

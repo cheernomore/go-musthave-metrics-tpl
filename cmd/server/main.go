@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
@@ -110,7 +111,17 @@ func run() error {
 		}
 	}
 
-	metricHandler := handler.NewMetricHandler(repo)
+	auditor := audit.NewSubject()
+	if cfg.AuditFile != "" {
+		auditor.Register(audit.NewFileObserver(cfg.AuditFile))
+		logger.Log.Info("аудит в файл включён", zap.String("file", cfg.AuditFile))
+	}
+	if cfg.AuditURL != "" {
+		auditor.Register(audit.NewHTTPObserver(cfg.AuditURL))
+		logger.Log.Info("аудит на удалённый сервер включён", zap.String("url", cfg.AuditURL))
+	}
+
+	metricHandler := handler.NewMetricHandler(repo, auditor)
 
 	r := chi.NewRouter()
 

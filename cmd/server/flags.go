@@ -13,6 +13,8 @@ type Config struct {
 	Restore         bool   `env:"RESTORE"`
 	DatabaseDSN     string `env:"DATABASE_DSN"`
 	Key             string `env:"KEY"`
+	AuditFile       string `env:"AUDIT_FILE"`
+	AuditURL        string `env:"AUDIT_URL"`
 }
 
 func LoadConfig() Config {
@@ -24,6 +26,8 @@ func LoadConfig() Config {
 	flag.BoolVar(&cfg.Restore, "r", true, "restore metrics from file on start")
 	flag.StringVar(&cfg.DatabaseDSN, "d", "", "connect to db")
 	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
+	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (audit disabled if empty)")
+	flag.StringVar(&cfg.AuditURL, "audit-url", "", "url to send audit events via POST (audit disabled if empty)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

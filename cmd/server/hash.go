@@ -83,7 +83,7 @@ func (rw *responseWriterWithHash) flush() {
 		hash := calculateHash(rw.body.Bytes(), rw.key)
 		rw.ResponseWriter.Header().Set("HashSHA256", hash)
 	}
-	
+
 	contentType := rw.Header().Get("Content-Type")
 	acceptsGzip := strings.Contains(rw.request.Header.Get("Accept-Encoding"), "gzip")
 	if acceptsGzip && (strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/html")) {

@@ -80,11 +80,13 @@ func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	names := make([]string, 0, len(metrics))
-	for _, m := range metrics {
-		names = append(names, m.ID)
+	if h.auditor.HasObservers() {
+		names := make([]string, 0, len(metrics))
+		for _, m := range metrics {
+			names = append(names, m.ID)
+		}
+		h.audit(r, names)
 	}
-	h.audit(r, names)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -132,7 +134,9 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.audit(r, []string{m.ID})
+	if h.auditor.HasObservers() {
+		h.audit(r, []string{m.ID})
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
@@ -212,7 +216,9 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.audit(r, []string{m.ID})
+	if h.auditor.HasObservers() {
+		h.audit(r, []string{m.ID})
+	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -244,8 +250,9 @@ func (h *MetricHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
-	const htmlTemplate = `
+// indexTemplate компилируется один раз при инициализации пакета, чтобы не
+// тратить аллокации на разбор шаблона при каждом запросе к Index.
+var indexTemplate = template.Must(template.New("index").Parse(`
 		<!DOCTYPE html>
 		<html>
 		<head>
@@ -270,14 +277,9 @@ func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
 			{{end}}
 			</ul>
 		</body>
-		</html>`
+		</html>`))
 
-	tmpl, err := template.New("index").Parse(htmlTemplate)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
 	m, err := h.repo.FindAll()
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -285,8 +287,7 @@ func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = tmpl.Execute(w, m)
-	if err != nil {
+	if err := indexTemplate.Execute(w, m); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

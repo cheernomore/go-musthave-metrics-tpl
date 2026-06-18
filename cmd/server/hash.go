@@ -16,6 +16,9 @@ func calculateHash(data []byte, key string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// HashValidationMiddleware проверяет подпись входящего запроса. Если key пуст,
+// проверка отключена. Иначе при наличии заголовка HashSHA256 сравнивает его
+// с HMAC-SHA256 тела запроса и отвечает 400 при несовпадении.
 func HashValidationMiddleware(key string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +97,8 @@ func (rw *responseWriterWithHash) flush() {
 	rw.ResponseWriter.Write(rw.body.Bytes())
 }
 
+// HashResponseMiddleware подписывает ответ сервера: при непустом key
+// добавляет в ответ заголовок HashSHA256 с HMAC-SHA256 тела ответа.
 func HashResponseMiddleware(key string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

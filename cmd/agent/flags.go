@@ -6,12 +6,19 @@ import (
 	"log"
 )
 
+// Config — конфигурация агента. Каждый параметр задаётся флагом командной
+// строки и может быть переопределён одноимённой переменной окружения.
 type Config struct {
-	Address        string `env:"ADDRESS"`
-	ReportInterval int    `env:"REPORT_INTERVAL"`
-	PollInterval   int    `env:"POLL_INTERVAL"`
-	Key            string `env:"KEY"`
-	RateLimit      int    `env:"RATE_LIMIT"`
+	// Address — адрес сервера сбора метрик (флаг -a, ENV ADDRESS).
+	Address string `env:"ADDRESS"`
+	// ReportInterval — интервал отправки метрик в секундах (флаг -r, ENV REPORT_INTERVAL).
+	ReportInterval int `env:"REPORT_INTERVAL"`
+	// PollInterval — интервал сбора метрик в секундах (флаг -p, ENV POLL_INTERVAL).
+	PollInterval int `env:"POLL_INTERVAL"`
+	// Key — ключ подписи запросов (флаг -k, ENV KEY).
+	Key string `env:"KEY"`
+	// RateLimit — максимум одновременных исходящих запросов (флаг -l, ENV RATE_LIMIT).
+	RateLimit int `env:"RATE_LIMIT"`
 }
 
 func parseFlags() Config {

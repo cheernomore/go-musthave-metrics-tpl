@@ -8,17 +8,22 @@ import (
 	"sync"
 )
 
+// MemStorage — потокобезопасное хранилище метрик в оперативной памяти.
 type MemStorage struct {
+	// Metrics хранит метрики, индексированные по имени.
 	Metrics map[string]models.Metrics
 	mu      sync.RWMutex
 }
 
+// NewMemStorage создаёт пустое in-memory хранилище метрик.
 func NewMemStorage() *MemStorage {
 	return &MemStorage{
 		Metrics: make(map[string]models.Metrics),
 	}
 }
 
+// Save сохраняет метрику. Для counter дельта прибавляется к уже накопленному
+// значению, для gauge значение замещается.
 func (m *MemStorage) Save(metric models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -35,6 +40,7 @@ func (m *MemStorage) Save(metric models.Metrics) error {
 	return nil
 }
 
+// SaveBatch сохраняет набор метрик за один захват блокировки.
 func (m *MemStorage) SaveBatch(metrics []models.Metrics) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -52,6 +58,8 @@ func (m *MemStorage) SaveBatch(metrics []models.Metrics) error {
 	return nil
 }
 
+// Find возвращает метрику по имени и типу. Возвращает ошибку, если метрика
+// не найдена или её тип не совпадает с запрошенным.
 func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -66,6 +74,7 @@ func (m *MemStorage) Find(id string, metricType string) (models.Metrics, error) 
 	return val, nil
 }
 
+// FindAll возвращает все сохранённые метрики в произвольном порядке.
 func (m *MemStorage) FindAll() ([]models.Metrics, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -77,6 +86,7 @@ func (m *MemStorage) FindAll() ([]models.Metrics, error) {
 	return outputMetrics, nil
 }
 
+// SaveToFile сохраняет все метрики в файл по указанному пути в формате JSON.
 func (m *MemStorage) SaveToFile(path string) error {
 	metrics, err := m.FindAll()
 	if err != nil {
@@ -91,6 +101,7 @@ func (m *MemStorage) SaveToFile(path string) error {
 	return os.WriteFile(path, data, 0666)
 }
 
+// LoadFromFile загружает метрики из JSON-файла и добавляет их в хранилище.
 func (m *MemStorage) LoadFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

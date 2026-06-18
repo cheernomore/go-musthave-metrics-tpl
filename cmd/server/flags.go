@@ -6,17 +6,29 @@ import (
 	"log"
 )
 
+// Config — конфигурация сервера. Каждый параметр задаётся флагом командной
+// строки и может быть переопределён одноимённой переменной окружения.
 type Config struct {
-	Address         string `env:"ADDRESS"`
-	StoreInterval   int    `env:"STORE_INTERVAL"`
+	// Address — адрес и порт прослушивания (флаг -a, ENV ADDRESS).
+	Address string `env:"ADDRESS"`
+	// StoreInterval — интервал сохранения метрик на диск в секундах (флаг -i, ENV STORE_INTERVAL).
+	StoreInterval int `env:"STORE_INTERVAL"`
+	// FileStoragePath — путь к файлу хранения метрик (флаг -f, ENV FILE_STORAGE_PATH).
 	FileStoragePath string `env:"FILE_STORAGE_PATH"`
-	Restore         bool   `env:"RESTORE"`
-	DatabaseDSN     string `env:"DATABASE_DSN"`
-	Key             string `env:"KEY"`
-	AuditFile       string `env:"AUDIT_FILE"`
-	AuditURL        string `env:"AUDIT_URL"`
+	// Restore — восстанавливать ли метрики из файла при старте (флаг -r, ENV RESTORE).
+	Restore bool `env:"RESTORE"`
+	// DatabaseDSN — строка подключения к PostgreSQL (флаг -d, ENV DATABASE_DSN).
+	DatabaseDSN string `env:"DATABASE_DSN"`
+	// Key — ключ подписи запросов (флаг -k, ENV KEY).
+	Key string `env:"KEY"`
+	// AuditFile — путь к файлу аудита; пусто — аудит в файл отключён (флаг -audit-file, ENV AUDIT_FILE).
+	AuditFile string `env:"AUDIT_FILE"`
+	// AuditURL — URL приёмника аудита; пусто — удалённый аудит отключён (флаг -audit-url, ENV AUDIT_URL).
+	AuditURL string `env:"AUDIT_URL"`
 }
 
+// LoadConfig разбирает флаги командной строки и переменные окружения
+// и возвращает итоговую конфигурацию сервера.
 func LoadConfig() Config {
 	var cfg Config
 

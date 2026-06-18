@@ -12,10 +12,13 @@ import (
 	"time"
 )
 
+// PostgresRepository — хранилище метрик в PostgreSQL. Операции выполняются
+// с повторными попытками при временных ошибках соединения (см. retry).
 type PostgresRepository struct {
 	db *sql.DB
 }
 
+// NewPostgresRepository создаёт репозиторий поверх открытого соединения с БД.
 func NewPostgresRepository(db *sql.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
@@ -40,6 +43,8 @@ func isRetriableDBError(err error) bool {
 	return false
 }
 
+// Save сохраняет метрику через UPSERT. Для counter дельта суммируется
+// с текущим значением на стороне БД.
 func (p *PostgresRepository) Save(metric models.Metrics) error {
 	return retry.WithRetry(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -67,6 +72,8 @@ func (p *PostgresRepository) Save(metric models.Metrics) error {
 	}, isRetriableDBError)
 }
 
+// SaveBatch сохраняет набор метрик в одной транзакции с подготовленными
+// запросами для counter и gauge.
 func (p *PostgresRepository) SaveBatch(metrics []models.Metrics) error {
 	return retry.WithRetry(func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -115,6 +122,8 @@ func (p *PostgresRepository) SaveBatch(metrics []models.Metrics) error {
 	}, isRetriableDBError)
 }
 
+// Find возвращает метрику по имени и типу. Если строки нет, возвращается
+// ошибка "metric <id> not found".
 func (p *PostgresRepository) Find(id string, metricType string) (models.Metrics, error) {
 	var result models.Metrics
 	err := retry.WithRetry(func() error {
@@ -155,6 +164,7 @@ func (p *PostgresRepository) Find(id string, metricType string) (models.Metrics,
 	return result, err
 }
 
+// FindAll возвращает все метрики, отсортированные по имени.
 func (p *PostgresRepository) FindAll() ([]models.Metrics, error) {
 	var result []models.Metrics
 	err := retry.WithRetry(func() error {

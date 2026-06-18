@@ -17,10 +17,12 @@ import (
 	"time"
 )
 
+// Server — корневой объект приложения сервера, владеющий соединением с БД.
 type Server struct {
 	db *sql.DB
 }
 
+// NewServer создаёт экземпляр сервера без инициализированного соединения с БД.
 func NewServer() *Server {
 	return &Server{}
 }

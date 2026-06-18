@@ -1,3 +1,5 @@
+// Package logger предоставляет общий структурированный логгер на базе zap
+// и HTTP-middleware для логирования запросов.
 package logger
 
 import (
@@ -6,8 +8,11 @@ import (
 	"time"
 )
 
+// Log — глобальный логгер пакета. До вызова Initialize это no-op логгер.
 var Log = zap.NewNop()
 
+// Initialize настраивает глобальный логгер Log на заданный уровень
+// (например, "info", "debug"). Возвращает ошибку при некорректном уровне.
 func Initialize(level string) error {
 	lvl, err := zap.ParseAtomicLevel(level)
 	if err != nil {
@@ -25,6 +30,8 @@ func Initialize(level string) error {
 	return nil
 }
 
+// RequestLogger — middleware, логирующее каждый HTTP-запрос: URI, метод,
+// код ответа, размер тела и длительность обработки.
 func RequestLogger(h http.Handler) http.Handler {
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

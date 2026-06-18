@@ -22,15 +22,23 @@ import (
 	"time"
 )
 
+// Metric — собранная агентом метрика во внутреннем представлении до
+// преобразования в модель отправки.
 type Metric struct {
-	Name  string
+	// Name — имя метрики.
+	Name string
+	// Value — значение метрики (числовой тип, зависящий от метрики).
 	Value any
-	Type  string
+	// Type — тип метрики: "gauge" или "counter".
+	Type string
 }
 
+// SendResult — результат отправки пакета метрик на сервер.
 type SendResult struct {
+	// StatusCode — HTTP-код ответа сервера.
 	StatusCode int
-	Header     string
+	// Header — значение заголовка Content-Type ответа.
+	Header string
 }
 
 func main() {
@@ -205,6 +213,9 @@ func calculateHash(data []byte, key string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// SendMetricsBatch отправляет пакет метрик POST-запросом на url. Тело
+// сериализуется в JSON и сжимается gzip; при непустом key добавляется
+// подпись HMAC-SHA256 в заголовке HashSHA256.
 func SendMetricsBatch(url string, metrics []models.Metrics, key string, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {

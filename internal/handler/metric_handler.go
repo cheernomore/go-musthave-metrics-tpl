@@ -1,3 +1,4 @@
+// Package handler содержит HTTP-обработчики API сервера сбора метрик.
 package handler
 
 import (
@@ -16,11 +17,15 @@ import (
 	"time"
 )
 
+// MetricHandler обслуживает HTTP-эндпоинты приёма и выдачи метрик. Хранение
+// делегируется repo, а после успешной записи события рассылаются через auditor.
 type MetricHandler struct {
 	repo    repository.MetricsRepository
 	auditor *audit.Subject
 }
 
+// NewMetricHandler создаёт обработчик поверх хранилища repo. Параметр auditor
+// может быть nil — в этом случае аудит запросов отключён.
 func NewMetricHandler(repo repository.MetricsRepository, auditor *audit.Subject) *MetricHandler {
 	return &MetricHandler{
 		repo:    repo,
@@ -60,6 +65,9 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// Updates обрабатывает POST /updates/ — приём пакета метрик в формате JSON.
+// Тело запроса — массив метрик. Возвращает 200 при успехе, 400 при некорректном
+// JSON и 500 при ошибке сохранения.
 func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	var metrics []models.Metrics
 
@@ -91,6 +99,8 @@ func (h *MetricHandler) Updates(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// UpdateNew обрабатывает POST /update — приём одной метрики в формате JSON.
+// В ответ возвращается сохранённая метрика (с актуальным значением) в JSON.
 func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 	var m models.Metrics
 
@@ -146,6 +156,8 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Value обрабатывает POST /value — запрос значения метрики по её имени и типу,
+// переданным в теле в формате JSON. Возвращает метрику в JSON или 404.
 func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {
 	logger.Log.Debug("decoding request")
 	var req models.Metrics
@@ -170,6 +182,9 @@ func (h *MetricHandler) Value(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Update обрабатывает POST /update/{metricType}/{metricName}/{value} —
+// приём одной метрики через параметры URL. Возвращает 200 при успехе,
+// 400 при некорректном значении/типе и 404 при отсутствии имени.
 func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var m models.Metrics
 	metricTypeURLParam := chi.URLParam(r, "metricType")
@@ -224,6 +239,8 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// Get обрабатывает GET /value/{metricType}/{metricName} — выдачу значения
+// метрики в виде текста. Возвращает 404, если метрика не найдена.
 func (h *MetricHandler) Get(w http.ResponseWriter, r *http.Request) {
 	metricTypeURLParam := chi.URLParam(r, "metricType")
 	metricNameURLParam := chi.URLParam(r, "metricName")
@@ -279,6 +296,8 @@ var indexTemplate = template.Must(template.New("index").Parse(`
 		</body>
 		</html>`))
 
+// Index обрабатывает GET / — HTML-страницу со списком всех метрик,
+// сгруппированных по типам (counter и gauge).
 func (h *MetricHandler) Index(w http.ResponseWriter, r *http.Request) {
 	m, err := h.repo.FindAll()
 	if err != nil {

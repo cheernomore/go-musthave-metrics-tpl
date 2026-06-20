@@ -295,7 +295,6 @@ func getMetricsPooler() func(m *runtime.MemStats) []Metric {
 	var pollCount int64 = 0
 
 	return func(m *runtime.MemStats) []Metric {
-		fmt.Println("-----METRICS UPDATED-----")
 		runtime.ReadMemStats(m)
 
 		pollCount++

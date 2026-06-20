@@ -2,8 +2,15 @@ package main
 
 import (
 	"flag"
-	"github.com/caarlos0/env/v6"
 	"log"
+
+	"github.com/caarlos0/env/v6"
+)
+
+// Значения интервалов агента по умолчанию (в секундах).
+const (
+	defaultPollInterval   = 2
+	defaultReportInterval = 10
 )
 
 // Config — конфигурация агента. Каждый параметр задаётся флагом командной
@@ -25,8 +32,8 @@ func parseFlags() Config {
 	var cfg Config
 
 	flag.StringVar(&cfg.Address, "a", "localhost:8080", "port to run server")
-	flag.IntVar(&cfg.ReportInterval, "r", 10, "interval between metrics sending")
-	flag.IntVar(&cfg.PollInterval, "p", 2, "interval between metrics pooling")
+	flag.IntVar(&cfg.ReportInterval, "r", defaultReportInterval, "interval between metrics sending")
+	flag.IntVar(&cfg.PollInterval, "p", defaultPollInterval, "interval between metrics pooling")
 	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
 	flag.IntVar(&cfg.RateLimit, "l", 1, "max concurrent outgoing requests")
 	flag.Parse()
@@ -35,5 +42,23 @@ func parseFlags() Config {
 		log.Fatal("ошибка при парсинге конфига")
 	}
 
+	cfg.normalizeIntervals()
+
 	return cfg
+}
+
+// normalizeIntervals заменяет некорректные (неположительные) интервалы опроса
+// и отправки значениями по умолчанию. Это защищает от паники time.NewTicker
+// при передаче нулей или отрицательных значений через флаги или окружение.
+func (c *Config) normalizeIntervals() {
+	if c.PollInterval <= 0 {
+		log.Printf("некорректный интервал опроса (%d), используется значение по умолчанию: %d",
+			c.PollInterval, defaultPollInterval)
+		c.PollInterval = defaultPollInterval
+	}
+	if c.ReportInterval <= 0 {
+		log.Printf("некорректный интервал отправки (%d), используется значение по умолчанию: %d",
+			c.ReportInterval, defaultReportInterval)
+		c.ReportInterval = defaultReportInterval
+	}
 }

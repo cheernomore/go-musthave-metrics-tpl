@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -16,10 +17,19 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"runtime"
 	"sync"
 	"syscall"
 	"time"
+)
+
+// Переменные сборки задаются через -ldflags при компиляции, например:
+// go build -ldflags "-X main.buildVersion=v1.0.0".
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 // Metric — собранная агентом метрика во внутреннем представлении до
@@ -42,6 +52,8 @@ type SendResult struct {
 }
 
 func main() {
+	buildinfo.Print(os.Stdout, buildVersion, buildDate, buildCommit)
+
 	cfg := parseFlags()
 
 	var mu sync.Mutex

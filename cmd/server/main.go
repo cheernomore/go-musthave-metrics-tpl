@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
@@ -14,7 +15,16 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 	"net/http"
+	"os"
 	"time"
+)
+
+// Переменные сборки задаются через -ldflags при компиляции, например:
+// go build -ldflags "-X main.buildVersion=v1.0.0".
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
 )
 
 // Server — корневой объект приложения сервера, владеющий соединением с БД.
@@ -28,6 +38,8 @@ func NewServer() *Server {
 }
 
 func main() {
+	buildinfo.Print(os.Stdout, buildVersion, buildDate, buildCommit)
+
 	if err := run(); err != nil {
 		panic(err)
 	}

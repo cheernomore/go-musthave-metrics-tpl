@@ -14,6 +14,8 @@ const (
 //
 // Delta и Value объявлены через указатели, чтобы отличать заданное нулевое
 // значение от незаданного: пустые поля не сериализуются (omitempty).
+//
+// generate:reset
 type Metrics struct {
 	// ID — имя метрики (например, "Alloc", "PollCount").
 	ID string `json:"id"`

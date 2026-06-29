@@ -113,21 +113,22 @@ func (h *MetricHandler) UpdateNew(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.MType == models.Counter {
+	switch req.MType {
+	case models.Counter:
 		m = models.Metrics{
 			ID:    req.ID,
 			MType: req.MType,
 			Delta: req.Delta,
 			Value: nil,
 		}
-	} else if req.MType == models.Gauge {
+	case models.Gauge:
 		m = models.Metrics{
 			ID:    req.ID,
 			MType: req.MType,
 			Delta: nil,
 			Value: req.Value,
 		}
-	} else {
+	default:
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
 		return
 	}
@@ -196,7 +197,8 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metricTypeURLParam == models.Counter {
+	switch metricTypeURLParam {
+	case models.Counter:
 		parsedValue, err := strconv.ParseInt(valueURLParam, 10, 64)
 		if err != nil {
 			http.Error(w, "invalid value for counter", http.StatusBadRequest)
@@ -208,7 +210,7 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Delta: &parsedValue,
 			Value: nil,
 		}
-	} else if metricTypeURLParam == models.Gauge {
+	case models.Gauge:
 		parsedValue, err := strconv.ParseFloat(valueURLParam, 64)
 		if err != nil {
 			http.Error(w, "invalid value for gauge", http.StatusBadRequest)
@@ -220,7 +222,7 @@ func (h *MetricHandler) Update(w http.ResponseWriter, r *http.Request) {
 			Delta: nil,
 			Value: &parsedValue,
 		}
-	} else {
+	default:
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
 		return
 	}

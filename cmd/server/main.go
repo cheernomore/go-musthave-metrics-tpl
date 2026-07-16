@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
@@ -17,6 +18,9 @@ import (
 	"go.uber.org/zap"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -56,6 +60,17 @@ func run() error {
 	cfg := LoadConfig()
 	logger.Log.Info("--- end config loading ---")
 
+	// Контекст, отменяемый по сигналам штатного завершения.
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
+	// memStorage хранится отдельно, чтобы сбросить несохранённые данные в файл
+	// при завершении. Для БД остаётся nil.
+	var memStorage *repository.MemStorage
+	// saverWG ждёт остановки фонового сохранения по тикеру перед финальным сбросом.
+	var saverWG sync.WaitGroup
+
 	var repo repository.MetricsRepository
 
 	if cfg.DatabaseDSN != "" {
@@ -91,7 +106,7 @@ func run() error {
 	}
 
 	if repo == nil {
-		memStorage := repository.NewMemStorage()
+		memStorage = repository.NewMemStorage()
 
 		if cfg.Restore && cfg.FileStoragePath != "" {
 			if err := memStorage.LoadFromFile(cfg.FileStoragePath); err != nil {
@@ -110,12 +125,19 @@ func run() error {
 
 		if cfg.FileStoragePath != "" && cfg.StoreInterval > 0 {
 			logger.Log.Info("используем периодическое сохранение в файл", zap.Int("interval", cfg.StoreInterval))
+			saverWG.Add(1)
 			go func() {
+				defer saverWG.Done()
 				ticker := time.NewTicker(time.Duration(cfg.StoreInterval) * time.Second)
 				defer ticker.Stop()
-				for range ticker.C {
-					if err := memStorage.SaveToFile(cfg.FileStoragePath); err != nil {
-						logger.Log.Error("ошибка сохранения в файл по тикеру", zap.Error(err))
+				for {
+					select {
+					case <-ticker.C:
+						if err := memStorage.SaveToFile(cfg.FileStoragePath); err != nil {
+							logger.Log.Error("ошибка сохранения в файл по тикеру", zap.Error(err))
+						}
+					case <-ctx.Done():
+						return
 					}
 				}
 			}()
@@ -164,8 +186,45 @@ func run() error {
 	r.Get("/ping", srv.ping)
 	r.Get("/", metricHandler.Index)
 
-	logger.Log.Info("Running server", zap.String("address", cfg.Address))
-	return http.ListenAndServe(cfg.Address, r)
+	httpServer := &http.Server{Addr: cfg.Address, Handler: r}
+
+	srvErr := make(chan error, 1)
+	go func() {
+		logger.Log.Info("Running server", zap.String("address", cfg.Address))
+		srvErr <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case err := <-srvErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		logger.Log.Info("получен сигнал завершения, останавливаем сервер")
+		// Восстанавливаем стандартную обработку сигналов: повторный сигнал
+		// завершит процесс принудительно.
+		stop()
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Log.Error("ошибка graceful shutdown", zap.Error(err))
+	}
+
+	// Ждём остановки фонового сохранения и сбрасываем несохранённые данные.
+	saverWG.Wait()
+	if memStorage != nil && cfg.FileStoragePath != "" {
+		if err := memStorage.SaveToFile(cfg.FileStoragePath); err != nil {
+			logger.Log.Error("не удалось сохранить данные при завершении", zap.Error(err))
+		} else {
+			logger.Log.Info("несохранённые данные записаны в файл")
+		}
+	}
+
+	logger.Log.Info("сервер остановлен")
+	return nil
 }
 
 func runMigrations(db *sql.DB) error {

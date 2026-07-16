@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/hmac"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -21,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
@@ -69,6 +71,11 @@ func main() {
 		fmt.Println("асимметричное шифрование включено")
 	}
 
+	// Контекст, отменяемый по сигналам штатного завершения.
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
 	var mu sync.Mutex
 	var runtimeMetrics []Metric
 	var extraMetrics []Metric
@@ -83,20 +90,30 @@ func main() {
 	go func() {
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			runtimeMetrics = metricsPooler(&memStats)
-			mu.Unlock()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				runtimeMetrics = metricsPooler(&memStats)
+				mu.Unlock()
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	go func() {
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			extraMetrics = collectGopsutilMetrics()
-			mu.Unlock()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				extraMetrics = collectGopsutilMetrics()
+				mu.Unlock()
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -106,8 +123,11 @@ func main() {
 	if rateLimit < 1 {
 		rateLimit = 1
 	}
+	var workers sync.WaitGroup
 	for range rateLimit {
+		workers.Add(1)
 		go func() {
+			defer workers.Done()
 			for batch := range jobs {
 				err := retry.WithRetry(func() error {
 					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, cfg.Key, pubKey, &client)
@@ -120,29 +140,54 @@ func main() {
 		}()
 	}
 
-	reportTicker := time.NewTicker(reportInterval)
-	defer reportTicker.Stop()
-
-	for range reportTicker.C {
+	// snapshot возвращает копию собранных на текущий момент метрик.
+	snapshot := func() []Metric {
 		mu.Lock()
+		defer mu.Unlock()
 		all := make([]Metric, 0, len(runtimeMetrics)+len(extraMetrics))
 		all = append(all, runtimeMetrics...)
 		all = append(all, extraMetrics...)
-		mu.Unlock()
-
-		if len(all) == 0 {
-			continue
-		}
-
-		batch := make([]models.Metrics, 0, len(all))
-		for _, metric := range all {
-			if payload, ok := convertToModel(metric); ok {
-				batch = append(batch, payload)
-			}
-		}
-
-		jobs <- batch
+		return all
 	}
+	// enqueue формирует пакет из текущих метрик и ставит его в очередь отправки.
+	enqueue := func() {
+		if batch := buildBatch(snapshot()); len(batch) > 0 {
+			jobs <- batch
+		}
+	}
+
+	reportTicker := time.NewTicker(reportInterval)
+	defer reportTicker.Stop()
+
+loop:
+	for {
+		select {
+		case <-reportTicker.C:
+			enqueue()
+		case <-ctx.Done():
+			// Данные, находящиеся в обработке на момент сигнала, должны быть
+			// отправлены на сервер.
+			fmt.Println("получен сигнал завершения, досылаем метрики")
+			enqueue()
+			break loop
+		}
+	}
+
+	// Закрываем очередь и ждём, пока воркеры отправят оставшиеся пакеты.
+	close(jobs)
+	workers.Wait()
+	fmt.Println("агент остановлен")
+}
+
+// buildBatch преобразует собранные метрики в модель отправки.
+func buildBatch(metrics []Metric) []models.Metrics {
+	batch := make([]models.Metrics, 0, len(metrics))
+	for _, metric := range metrics {
+		if payload, ok := convertToModel(metric); ok {
+			batch = append(batch, payload)
+		}
+	}
+	return batch
 }
 
 func convertToModel(metric Metric) (models.Metrics, bool) {

@@ -25,6 +25,9 @@ type Config struct {
 	AuditFile string `env:"AUDIT_FILE"`
 	// AuditURL — URL приёмника аудита; пусто — удалённый аудит отключён (флаг -audit-url, ENV AUDIT_URL).
 	AuditURL string `env:"AUDIT_URL"`
+	// CryptoKey — путь к файлу с приватным RSA-ключом для расшифровки запросов
+	// (флаг -crypto-key, ENV CRYPTO_KEY). Пусто — шифрование отключено.
+	CryptoKey string `env:"CRYPTO_KEY"`
 }
 
 // LoadConfig разбирает флаги командной строки и переменные окружения
@@ -40,6 +43,7 @@ func LoadConfig() Config {
 	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
 	flag.StringVar(&cfg.AuditFile, "audit-file", "", "path to audit log file (audit disabled if empty)")
 	flag.StringVar(&cfg.AuditURL, "audit-url", "", "url to send audit events via POST (audit disabled if empty)")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to RSA private key file for decrypting requests")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

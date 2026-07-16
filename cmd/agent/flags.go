@@ -26,6 +26,9 @@ type Config struct {
 	Key string `env:"KEY"`
 	// RateLimit — максимум одновременных исходящих запросов (флаг -l, ENV RATE_LIMIT).
 	RateLimit int `env:"RATE_LIMIT"`
+	// CryptoKey — путь к файлу с публичным RSA-ключом для шифрования запросов
+	// (флаг -crypto-key, ENV CRYPTO_KEY). Пусто — шифрование отключено.
+	CryptoKey string `env:"CRYPTO_KEY"`
 }
 
 func parseFlags() Config {
@@ -36,6 +39,7 @@ func parseFlags() Config {
 	flag.IntVar(&cfg.PollInterval, "p", defaultPollInterval, "interval between metrics pooling")
 	flag.StringVar(&cfg.Key, "k", "", "key for signing requests")
 	flag.IntVar(&cfg.RateLimit, "l", 1, "max concurrent outgoing requests")
+	flag.StringVar(&cfg.CryptoKey, "crypto-key", "", "path to RSA public key file for encrypting requests")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

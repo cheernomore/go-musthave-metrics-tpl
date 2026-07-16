@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
@@ -137,9 +138,18 @@ func run() error {
 
 	metricHandler := handler.NewMetricHandler(repo, auditor)
 
+	decryptMW, err := DecryptMiddleware(cfg.CryptoKey)
+	if err != nil {
+		return fmt.Errorf("не удалось загрузить приватный ключ: %w", err)
+	}
+	if cfg.CryptoKey != "" {
+		logger.Log.Info("асимметричное шифрование включено")
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(logger.RequestLogger)
+	r.Use(decryptMW)
 	r.Use(GzipMiddleware)
 	r.Use(HashValidationMiddleware(cfg.Key))
 	r.Use(HashResponseMiddleware(cfg.Key))

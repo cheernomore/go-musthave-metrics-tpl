@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"compress/gzip"
 	"crypto/hmac"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +16,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/crypto"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -151,12 +155,51 @@ func TestSendMetricsBatch(t *testing.T) {
 	batch := []models.Metrics{{ID: "Alloc", MType: models.Gauge, Value: &v}}
 	client := getClient()
 
-	res, err := SendMetricsBatch(ts.URL, batch, key, &client)
+	res, err := SendMetricsBatch(ts.URL, batch, key, nil, &client)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Equal(t, "gzip", gotEncoding)
 	assert.NotEmpty(t, gotHash)
+	require.Len(t, gotMetrics, 1)
+	assert.Equal(t, "Alloc", gotMetrics[0].ID)
+}
+
+func TestSendMetricsBatch_Encrypted(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	var gotMetrics []models.Metrics
+	var gotEncryptedHeader string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotEncryptedHeader = r.Header.Get(crypto.EncryptedHeader)
+
+		enc, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		// Расшифровываем приватным ключом, затем распаковываем gzip.
+		compressed, err := crypto.Decrypt(key, enc)
+		require.NoError(t, err)
+		gz, err := gzip.NewReader(bytes.NewReader(compressed))
+		require.NoError(t, err)
+		defer gz.Close()
+		body, err := io.ReadAll(gz)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &gotMetrics))
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	v := 12.5
+	batch := []models.Metrics{{ID: "Alloc", MType: models.Gauge, Value: &v}}
+	client := getClient()
+
+	res, err := SendMetricsBatch(ts.URL, batch, "", &key.PublicKey, &client)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Equal(t, "1", gotEncryptedHeader)
 	require.Len(t, gotMetrics, 1)
 	assert.Equal(t, "Alloc", gotMetrics[0].ID)
 }

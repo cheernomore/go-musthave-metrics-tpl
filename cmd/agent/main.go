@@ -4,16 +4,19 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/hmac"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/crypto"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
+	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -56,6 +59,16 @@ func main() {
 
 	cfg := parseFlags()
 
+	var pubKey *rsa.PublicKey
+	if cfg.CryptoKey != "" {
+		var err error
+		pubKey, err = crypto.LoadPublicKey(cfg.CryptoKey)
+		if err != nil {
+			log.Fatalf("не удалось загрузить публичный ключ: %v", err)
+		}
+		fmt.Println("асимметричное шифрование включено")
+	}
+
 	var mu sync.Mutex
 	var runtimeMetrics []Metric
 	var extraMetrics []Metric
@@ -97,7 +110,7 @@ func main() {
 		go func() {
 			for batch := range jobs {
 				err := retry.WithRetry(func() error {
-					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, cfg.Key, &client)
+					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, cfg.Key, pubKey, &client)
 					return err
 				}, isRetriableError)
 				if err != nil {
@@ -227,8 +240,10 @@ func calculateHash(data []byte, key string) string {
 
 // SendMetricsBatch отправляет пакет метрик POST-запросом на url. Тело
 // сериализуется в JSON и сжимается gzip; при непустом key добавляется
-// подпись HMAC-SHA256 в заголовке HashSHA256.
-func SendMetricsBatch(url string, metrics []models.Metrics, key string, client *http.Client) (SendResult, error) {
+// подпись HMAC-SHA256 в заголовке HashSHA256. Если задан pubKey, сжатое тело
+// дополнительно шифруется RSA-ключом, а запрос помечается заголовком
+// crypto.EncryptedHeader.
+func SendMetricsBatch(url string, metrics []models.Metrics, key string, pubKey *rsa.PublicKey, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return SendResult{}, err
@@ -239,7 +254,17 @@ func SendMetricsBatch(url string, metrics []models.Metrics, key string, client *
 		return SendResult{}, err
 	}
 
-	request, err := http.NewRequest(http.MethodPost, url, buf)
+	payload := buf.Bytes()
+	encrypted := false
+	if pubKey != nil {
+		payload, err = crypto.Encrypt(pubKey, payload)
+		if err != nil {
+			return SendResult{}, fmt.Errorf("encrypt error: %w", err)
+		}
+		encrypted = true
+	}
+
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return SendResult{}, fmt.Errorf("request creation error: %w", err)
 	}
@@ -247,6 +272,9 @@ func SendMetricsBatch(url string, metrics []models.Metrics, key string, client *
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Content-Encoding", "gzip")
 	request.Header.Set("Accept-Encoding", "gzip")
+	if encrypted {
+		request.Header.Set(crypto.EncryptedHeader, "1")
+	}
 
 	if key != "" {
 		hash := calculateHash(body, key)

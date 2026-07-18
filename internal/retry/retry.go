@@ -7,48 +7,49 @@ import (
 	"time"
 )
 
-// RetryableFunc represents a function that can be retried
+// RetryableFunc — функция, выполнение которой можно повторить.
 type RetryableFunc func() error
 
-// ShouldRetryFunc determines if an error is retriable
+// ShouldRetryFunc определяет, является ли ошибка retriable (повторяемой).
 type ShouldRetryFunc func(error) bool
 
-// WithRetry executes the given function with retry logic
-// It makes 3 additional attempts after the initial one with intervals: 1s, 3s, 5s
-func WithRetry(fn RetryableFunc, shouldRetry ShouldRetryFunc) error {
-	// Интервалы между повторами: 1s, 3s, 5s
-	retryIntervals := []time.Duration{
-		1 * time.Second,
-		3 * time.Second,
-		5 * time.Second,
+// DefaultIntervals — интервалы между повторами по умолчанию.
+var DefaultIntervals = []time.Duration{
+	1 * time.Second,
+	3 * time.Second,
+	5 * time.Second,
+}
+
+// WithRetry выполняет fn, повторяя её при retriable-ошибках. Число повторов и
+// паузы между ними задаются intervals; если intervals не переданы, берутся
+// DefaultIntervals (1s, 3s, 5s). Передача малых интервалов (или нулевых)
+// позволяет тестировать логику повторов без реальных задержек.
+func WithRetry(fn RetryableFunc, shouldRetry ShouldRetryFunc, intervals ...time.Duration) error {
+	if len(intervals) == 0 {
+		intervals = DefaultIntervals
 	}
 
-	// Первая попытка
+	// Первая попытка.
 	err := fn()
 	if err == nil {
 		return nil
 	}
-
-	// Проверяем, нужно ли повторять
 	if !shouldRetry(err) {
 		return err
 	}
 
-	// Дополнительные попытки с интервалами
-	for attempt, interval := range retryIntervals {
-		fmt.Printf("Retry attempt %d after error: %v. Waiting %v...\n", attempt+1, err, interval)
+	// Дополнительные попытки с интервалами.
+	for _, interval := range intervals {
 		time.Sleep(interval)
 
 		err = fn()
 		if err == nil {
 			return nil
 		}
-
 		if !shouldRetry(err) {
 			return err
 		}
 	}
 
-	// Все попытки исчерпаны
 	return fmt.Errorf("all retry attempts exhausted: %w", err)
 }

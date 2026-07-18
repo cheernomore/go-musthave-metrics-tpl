@@ -64,6 +64,38 @@ func TestGzipMiddleware_CompressesResponse(t *testing.T) {
 	assert.Equal(t, `{"ok":true}`, string(decompressed))
 }
 
+// TestGzipMiddleware_HeaderBeforeStatus проверяет, что Content-Encoding
+// выставляется до отправки статус-кода. С реальным http.Server заголовки
+// «застывают» на WriteHeader, поэтому без переопределения WriteHeader этот
+// тест не прошёл бы (httptest.NewRecorder гонку не воспроизводит).
+func TestGzipMiddleware_HeaderBeforeStatus(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK) // явный WriteHeader до Write
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	ts := httptest.NewServer(GzipMiddleware(h))
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
+	require.NoError(t, err)
+	// Явный Accept-Encoding отключает автораспаковку в Transport.
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := ts.Client().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+
+	gz, err := gzip.NewReader(resp.Body)
+	require.NoError(t, err)
+	defer gz.Close()
+	body, err := io.ReadAll(gz)
+	require.NoError(t, err)
+	assert.Equal(t, `{"ok":true}`, string(body))
+}
+
 func TestGzipMiddleware_PassthroughWithoutGzip(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("plain"))

@@ -12,9 +12,25 @@ type gzipWriter struct {
 	Writer io.Writer
 }
 
-func (w gzipWriter) Write(b []byte) (int, error) {
+// shouldCompress сообщает, подлежит ли ответ сжатию по его Content-Type.
+func (w gzipWriter) shouldCompress() bool {
 	contentType := w.Header().Get("Content-Type")
-	if strings.Contains(contentType, "application/json") || strings.Contains(contentType, "text/html") {
+	return strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "text/html")
+}
+
+// WriteHeader выставляет Content-Encoding до отправки статус-кода, иначе
+// заголовок, добавленный позже в Write, уже не попал бы в ответ (гонка
+// заголовков при явном вызове WriteHeader обработчиком).
+func (w gzipWriter) WriteHeader(statusCode int) {
+	if w.shouldCompress() {
+		w.Header().Set("Content-Encoding", "gzip")
+	}
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w gzipWriter) Write(b []byte) (int, error) {
+	if w.shouldCompress() {
 		w.Header().Set("Content-Encoding", "gzip")
 		return w.Writer.Write(b)
 	}

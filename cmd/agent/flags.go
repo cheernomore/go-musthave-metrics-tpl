@@ -34,6 +34,9 @@ type Config struct {
 	// CryptoKey — путь к файлу с публичным RSA-ключом для шифрования запросов
 	// (флаг -crypto-key, ENV CRYPTO_KEY). Пусто — шифрование отключено.
 	CryptoKey string `env:"CRYPTO_KEY"`
+	// GRPCAddress — адрес gRPC-сервера (флаг -g, ENV GRPC_ADDRESS). Если задан,
+	// метрики отправляются по gRPC вместо HTTP.
+	GRPCAddress string `env:"GRPC_ADDRESS"`
 }
 
 // agentFileConfig — представление JSON-файла конфигурации агента. Поля
@@ -43,6 +46,7 @@ type agentFileConfig struct {
 	ReportInterval *string `json:"report_interval"`
 	PollInterval   *string `json:"poll_interval"`
 	CryptoKey      *string `json:"crypto_key"`
+	GRPCAddress    *string `json:"grpc_address"`
 	Key            *string `json:"key"`
 	RateLimit      *int    `json:"rate_limit"`
 }
@@ -77,6 +81,9 @@ func applyAgentFile(cfg *Config, fc agentFileConfig) {
 	}
 	if fc.CryptoKey != nil {
 		cfg.CryptoKey = *fc.CryptoKey
+	}
+	if fc.GRPCAddress != nil {
+		cfg.GRPCAddress = *fc.GRPCAddress
 	}
 	if fc.Key != nil {
 		cfg.Key = *fc.Key
@@ -116,6 +123,7 @@ func parseFlags() Config {
 	flag.StringVar(&cfg.Key, "k", def.Key, "key for signing requests")
 	flag.IntVar(&cfg.RateLimit, "l", def.RateLimit, "max concurrent outgoing requests")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", def.CryptoKey, "path to RSA public key file for encrypting requests")
+	flag.StringVar(&cfg.GRPCAddress, "g", def.GRPCAddress, "address of gRPC server (if set, metrics are sent via gRPC)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

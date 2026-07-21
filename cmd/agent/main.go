@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/crypto"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/grpcapi"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/netutil"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
@@ -82,6 +83,18 @@ func main() {
 
 	sendOpts := SendOptions{Key: cfg.Key, PubKey: pubKey, RealIP: realIP}
 
+	// Если задан адрес gRPC-сервера, метрики отправляются по gRPC.
+	var grpcClient *grpcapi.Client
+	if cfg.GRPCAddress != "" {
+		var err error
+		grpcClient, err = grpcapi.NewClient(cfg.GRPCAddress, realIP)
+		if err != nil {
+			log.Fatalf("не удалось создать gRPC-клиент: %v", err)
+		}
+		defer grpcClient.Close()
+		fmt.Printf("отправка метрик по gRPC на %s\n", cfg.GRPCAddress)
+	}
+
 	// Контекст, отменяемый по сигналам штатного завершения.
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -134,6 +147,19 @@ func main() {
 	if rateLimit < 1 {
 		rateLimit = 1
 	}
+	// sendBatch отправляет пакет метрик выбранным транспортом. Контекст
+	// намеренно не связан с сигнальным: при завершении агента досылка
+	// накопленных метрик должна успеть выполниться.
+	sendBatch := func(batch []models.Metrics) error {
+		if grpcClient != nil {
+			sendCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			return grpcClient.Send(sendCtx, batch)
+		}
+		_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, sendOpts, &client)
+		return err
+	}
+
 	var workers sync.WaitGroup
 	for range rateLimit {
 		workers.Add(1)
@@ -141,8 +167,7 @@ func main() {
 			defer workers.Done()
 			for batch := range jobs {
 				err := retry.WithRetry(func() error {
-					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, sendOpts, &client)
-					return err
+					return sendBatch(batch)
 				}, isRetriableError)
 				if err != nil {
 					fmt.Printf("Failed to send metrics batch after retries: %v\n", err)

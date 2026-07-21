@@ -37,6 +37,9 @@ type Config struct {
 	// TrustedSubnet — доверенная подсеть в формате CIDR (флаг -t,
 	// ENV TRUSTED_SUBNET). Пусто — метрики принимаются без ограничений.
 	TrustedSubnet string `env:"TRUSTED_SUBNET"`
+	// GRPCAddress — адрес gRPC-сервера (флаг -g, ENV GRPC_ADDRESS).
+	// Пусто — gRPC-сервер не запускается.
+	GRPCAddress string `env:"GRPC_ADDRESS"`
 }
 
 // serverFileConfig — представление JSON-файла конфигурации сервера. Поля
@@ -49,6 +52,7 @@ type serverFileConfig struct {
 	DatabaseDSN   *string `json:"database_dsn"`
 	CryptoKey     *string `json:"crypto_key"`
 	TrustedSubnet *string `json:"trusted_subnet"`
+	GRPCAddress   *string `json:"grpc_address"`
 	Key           *string `json:"key"`
 	AuditFile     *string `json:"audit_file"`
 	AuditURL      *string `json:"audit_url"`
@@ -91,6 +95,9 @@ func applyServerFile(cfg *Config, fc serverFileConfig) {
 	}
 	if fc.TrustedSubnet != nil {
 		cfg.TrustedSubnet = *fc.TrustedSubnet
+	}
+	if fc.GRPCAddress != nil {
+		cfg.GRPCAddress = *fc.GRPCAddress
 	}
 	if fc.Key != nil {
 		cfg.Key = *fc.Key
@@ -140,6 +147,7 @@ func LoadConfig() Config {
 	flag.StringVar(&cfg.AuditURL, "audit-url", def.AuditURL, "url to send audit events via POST (audit disabled if empty)")
 	flag.StringVar(&cfg.CryptoKey, "crypto-key", def.CryptoKey, "path to RSA private key file for decrypting requests")
 	flag.StringVar(&cfg.TrustedSubnet, "t", def.TrustedSubnet, "trusted subnet in CIDR notation (empty — no restrictions)")
+	flag.StringVar(&cfg.GRPCAddress, "g", def.GRPCAddress, "address of gRPC server (empty — gRPC disabled)")
 	flag.Parse()
 
 	if err := env.Parse(&cfg); err != nil {

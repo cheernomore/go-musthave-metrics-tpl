@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/audit"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/grpcapi"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/handler"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/logger"
+	pb "github.com/cheernomore/go-musthave-metrics-tpl/internal/proto"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-migrate/migrate/v4"
@@ -16,6 +18,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -177,6 +181,11 @@ func run() error {
 			zap.String("subnet", cfg.TrustedSubnet))
 	}
 
+	grpcServer, err := startGRPCServer(cfg, repo)
+	if err != nil {
+		return err
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(logger.RequestLogger)
@@ -224,6 +233,11 @@ func run() error {
 		logger.Log.Error("ошибка graceful shutdown", zap.Error(err))
 	}
 
+	if grpcServer != nil {
+		grpcServer.GracefulStop()
+		logger.Log.Info("gRPC-сервер остановлен")
+	}
+
 	// Ждём остановки фонового сохранения и сбрасываем несохранённые данные.
 	saverWG.Wait()
 	if memStorage != nil && cfg.FileStoragePath != "" {
@@ -236,6 +250,37 @@ func run() error {
 
 	logger.Log.Info("сервер остановлен")
 	return nil
+}
+
+// startGRPCServer поднимает gRPC-сервер сервиса Metrics, если задан его адрес.
+// Приём метрик защищён интерцептором проверки доверенной подсети. Возвращает
+// nil-сервер, если gRPC не сконфигурирован.
+func startGRPCServer(cfg Config, repo repository.MetricsRepository) (*grpc.Server, error) {
+	if cfg.GRPCAddress == "" {
+		return nil, nil
+	}
+
+	interceptor, err := grpcapi.TrustedSubnetInterceptor(cfg.TrustedSubnet)
+	if err != nil {
+		return nil, err
+	}
+
+	listener, err := net.Listen("tcp", cfg.GRPCAddress)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось открыть gRPC-порт: %w", err)
+	}
+
+	srv := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+	pb.RegisterMetricsServer(srv, grpcapi.NewMetricsServer(repo))
+
+	go func() {
+		logger.Log.Info("Running gRPC server", zap.String("address", cfg.GRPCAddress))
+		if err := srv.Serve(listener); err != nil {
+			logger.Log.Error("gRPC-сервер завершился с ошибкой", zap.Error(err))
+		}
+	}()
+
+	return srv, nil
 }
 
 func runMigrations(db *sql.DB) error {

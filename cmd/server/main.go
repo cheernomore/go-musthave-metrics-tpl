@@ -168,6 +168,15 @@ func run() error {
 		logger.Log.Info("асимметричное шифрование включено")
 	}
 
+	trustedMW, err := TrustedSubnetMiddleware(cfg.TrustedSubnet)
+	if err != nil {
+		return err
+	}
+	if cfg.TrustedSubnet != "" {
+		logger.Log.Info("приём метрик ограничен доверенной подсетью",
+			zap.String("subnet", cfg.TrustedSubnet))
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(logger.RequestLogger)
@@ -176,10 +185,12 @@ func run() error {
 	r.Use(HashValidationMiddleware(cfg.Key))
 	r.Use(HashResponseMiddleware(cfg.Key))
 
-	r.Post("/updates/", metricHandler.Updates)
-	r.Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
-	r.Post("/update", metricHandler.UpdateNew)
-	r.Post("/update/", metricHandler.UpdateNew)
+	// Приём метрик ограничен доверенной подсетью (если она задана).
+	r.With(trustedMW).Post("/updates/", metricHandler.Updates)
+	r.With(trustedMW).Post("/update/{metricType}/{metricName}/{value}", metricHandler.Update)
+	r.With(trustedMW).Post("/update", metricHandler.UpdateNew)
+	r.With(trustedMW).Post("/update/", metricHandler.UpdateNew)
+
 	r.Post("/value", metricHandler.Value)
 	r.Post("/value/", metricHandler.Value)
 	r.Get("/value/{metricType}/{metricName}", metricHandler.Get)

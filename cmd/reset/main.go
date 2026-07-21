@@ -327,7 +327,19 @@ func (g *generator) resetUnderlying(expr, name string, under ast.Expr, ptr bool)
 			}
 			return []string{expr + " = " + zeroValue(u.Name)}
 		}
-	case *ast.StructType, *ast.ArrayType:
+	case *ast.ArrayType:
+		// Именованный слайс обрезается по длине, именованный массив обнуляется.
+		if u.Len == nil {
+			if ptr {
+				return []string{"*" + expr + " = (*" + expr + ")[:0]"}
+			}
+			return []string{expr + " = " + expr + "[:0]"}
+		}
+		if ptr {
+			return []string{"*" + expr + " = " + name + "{}"}
+		}
+		return []string{expr + " = " + name + "{}"}
+	case *ast.StructType:
 		if ptr {
 			return []string{"*" + expr + " = " + name + "{}"}
 		}

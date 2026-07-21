@@ -110,6 +110,33 @@ func TestGzipMiddleware_PassthroughWithoutGzip(t *testing.T) {
 	assert.Empty(t, rec.Header().Get("Content-Encoding"))
 }
 
+func TestGzipMiddleware_BadGzipBody(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/updates/", bytes.NewReader([]byte("это не gzip")))
+	req.Header.Set("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+
+	GzipMiddleware(next).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestHashResponseMiddleware_EmptyKeyPassthrough(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("body"))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	HashResponseMiddleware("")(next).ServeHTTP(rec, req)
+
+	assert.Equal(t, "body", rec.Body.String())
+	assert.Empty(t, rec.Header().Get("HashSHA256"))
+}
+
 func TestCalculateHash(t *testing.T) {
 	a := calculateHash([]byte("data"), "key")
 	b := calculateHash([]byte("data"), "key")

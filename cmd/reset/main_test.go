@@ -71,6 +71,88 @@ func TestGenerate(t *testing.T) {
 	assert.Contains(t, out, "Code generated")
 }
 
+// wideSrc покрывает все поддерживаемые виды полей: именованные типы,
+// встроенные поля, массивы, интерфейсы, каналы, внешние типы и указатели.
+const wideSrc = `package example
+
+import "time"
+
+// Inner имеет собственный метод Reset(), объявленный вручную.
+type Inner struct{ N int }
+
+func (i *Inner) Reset() { i.N = 0 }
+
+type Celsius float64
+type Names []string
+type Dict map[string]int
+type Plain struct{ X int }
+
+// generate:reset
+type Wide struct {
+	Inner    Inner
+	InnerP   *Inner
+	Temp     Celsius
+	TempP    *Celsius
+	List     Names
+	D        Dict
+	P        Plain
+	PP       *Plain
+	Arr      [3]int
+	SliceP   *[]int
+	MapP     *map[string]int
+	Anything any
+	Err      error
+	Ts       time.Time
+	Ch       chan int
+	Fn       func()
+	Plain
+}
+`
+
+func TestGenerate_AllTypeKinds(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := writePkg(t, root, "example", wideSrc)
+
+	require.NoError(t, generate(root))
+
+	genPath := filepath.Join(pkgDir, generatedFile)
+	data, err := os.ReadFile(genPath)
+	require.NoError(t, err)
+	out := string(data)
+
+	_, err = parser.ParseFile(token.NewFileSet(), genPath, data, parser.AllErrors)
+	require.NoError(t, err)
+
+	want := []string{
+		"func (w *Wide) Reset() {",
+		"w.Inner.Reset()",             // значение с Reset
+		"if w.InnerP != nil {",        // указатель с Reset
+		"w.InnerP.Reset()",            //
+		"w.Temp = 0",                  // именованный базовый
+		"*w.TempP = 0",                // указатель на именованный базовый
+		"w.List = w.List[:0]",         // именованный слайс
+		"clear(w.D)",                  // именованная мапа
+		"w.P = Plain{}",               // структура без Reset
+		"*w.PP = Plain{}",             // указатель на структуру без Reset
+		"w.Arr = [3]int{}",            // массив
+		"*w.SliceP = (*w.SliceP)[:0]", // указатель на слайс
+		"clear(*w.MapP)",              // указатель на мапу
+		"w.Anything = nil",            // интерфейс
+		"w.Err = nil",                 // error
+		"w.Ts = time.Time{}",          // внешний тип
+		"w.Ch = nil",                  // канал
+		"w.Fn = nil",                  // функция
+		"w.Plain = Plain{}",           // встроенное поле
+		`"time"`,                      // импорт добавлен goimports
+	}
+	for _, s := range want {
+		assert.Contains(t, out, s)
+	}
+
+	// Для Inner метод не генерируется: он объявлен вручную.
+	assert.NotContains(t, out, "func (i *Inner) Reset()")
+}
+
 func TestGenerate_NoMarkers(t *testing.T) {
 	root := t.TempDir()
 	pkgDir := writePkg(t, root, "plain", "package plain\n\ntype T struct{ X int }\n")

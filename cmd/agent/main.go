@@ -14,6 +14,7 @@ import (
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/buildinfo"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/crypto"
 	models "github.com/cheernomore/go-musthave-metrics-tpl/internal/model"
+	"github.com/cheernomore/go-musthave-metrics-tpl/internal/netutil"
 	"github.com/cheernomore/go-musthave-metrics-tpl/internal/retry"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -70,6 +71,16 @@ func main() {
 		}
 		fmt.Println("асимметричное шифрование включено")
 	}
+
+	// IP-адрес хоста агента передаётся серверу в заголовке X-Real-IP.
+	var realIP string
+	if ip, err := netutil.LocalIP(); err != nil {
+		log.Printf("не удалось определить IP-адрес агента: %v", err)
+	} else {
+		realIP = ip.String()
+	}
+
+	sendOpts := SendOptions{Key: cfg.Key, PubKey: pubKey, RealIP: realIP}
 
 	// Контекст, отменяемый по сигналам штатного завершения.
 	ctx, stop := signal.NotifyContext(context.Background(),
@@ -130,7 +141,7 @@ func main() {
 			defer workers.Done()
 			for batch := range jobs {
 				err := retry.WithRetry(func() error {
-					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, cfg.Key, pubKey, &client)
+					_, err := SendMetricsBatch("http://"+cfg.Address+"/updates/", batch, sendOpts, &client)
 					return err
 				}, isRetriableError)
 				if err != nil {
@@ -283,12 +294,23 @@ func calculateHash(data []byte, key string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// SendOptions — параметры отправки пакета метрик.
+type SendOptions struct {
+	// Key — ключ подписи HMAC-SHA256; пусто — запрос не подписывается.
+	Key string
+	// PubKey — публичный RSA-ключ; nil — тело не шифруется.
+	PubKey *rsa.PublicKey
+	// RealIP — IP-адрес хоста агента для заголовка X-Real-IP;
+	// пусто — заголовок не добавляется.
+	RealIP string
+}
+
 // SendMetricsBatch отправляет пакет метрик POST-запросом на url. Тело
-// сериализуется в JSON и сжимается gzip; при непустом key добавляется
-// подпись HMAC-SHA256 в заголовке HashSHA256. Если задан pubKey, сжатое тело
-// дополнительно шифруется RSA-ключом, а запрос помечается заголовком
-// crypto.EncryptedHeader.
-func SendMetricsBatch(url string, metrics []models.Metrics, key string, pubKey *rsa.PublicKey, client *http.Client) (SendResult, error) {
+// сериализуется в JSON и сжимается gzip; при непустом opts.Key добавляется
+// подпись HMAC-SHA256 в заголовке HashSHA256. Если задан opts.PubKey, сжатое
+// тело дополнительно шифруется RSA-ключом, а запрос помечается заголовком
+// crypto.EncryptedHeader. IP агента передаётся в заголовке X-Real-IP.
+func SendMetricsBatch(url string, metrics []models.Metrics, opts SendOptions, client *http.Client) (SendResult, error) {
 	body, err := json.Marshal(metrics)
 	if err != nil {
 		return SendResult{}, err
@@ -301,8 +323,8 @@ func SendMetricsBatch(url string, metrics []models.Metrics, key string, pubKey *
 
 	payload := buf.Bytes()
 	encrypted := false
-	if pubKey != nil {
-		payload, err = crypto.Encrypt(pubKey, payload)
+	if opts.PubKey != nil {
+		payload, err = crypto.Encrypt(opts.PubKey, payload)
 		if err != nil {
 			return SendResult{}, fmt.Errorf("encrypt error: %w", err)
 		}
@@ -320,9 +342,12 @@ func SendMetricsBatch(url string, metrics []models.Metrics, key string, pubKey *
 	if encrypted {
 		request.Header.Set(crypto.EncryptedHeader, "1")
 	}
+	if opts.RealIP != "" {
+		request.Header.Set("X-Real-IP", opts.RealIP)
+	}
 
-	if key != "" {
-		hash := calculateHash(body, key)
+	if opts.Key != "" {
+		hash := calculateHash(body, opts.Key)
 		request.Header.Set("HashSHA256", hash)
 	}
 

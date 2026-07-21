@@ -133,12 +133,13 @@ func TestGetClient(t *testing.T) {
 func TestSendMetricsBatch(t *testing.T) {
 	key := "secret"
 
-	var gotEncoding, gotHash string
+	var gotEncoding, gotHash, gotRealIP string
 	var gotMetrics []models.Metrics
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotEncoding = r.Header.Get("Content-Encoding")
 		gotHash = r.Header.Get("HashSHA256")
+		gotRealIP = r.Header.Get("X-Real-IP")
 
 		gz, err := gzip.NewReader(r.Body)
 		require.NoError(t, err)
@@ -155,12 +156,13 @@ func TestSendMetricsBatch(t *testing.T) {
 	batch := []models.Metrics{{ID: "Alloc", MType: models.Gauge, Value: &v}}
 	client := getClient()
 
-	res, err := SendMetricsBatch(ts.URL, batch, key, nil, &client)
+	res, err := SendMetricsBatch(ts.URL, batch, SendOptions{Key: key, RealIP: "192.168.0.7"}, &client)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Equal(t, "gzip", gotEncoding)
 	assert.NotEmpty(t, gotHash)
+	assert.Equal(t, "192.168.0.7", gotRealIP)
 	require.Len(t, gotMetrics, 1)
 	assert.Equal(t, "Alloc", gotMetrics[0].ID)
 }
@@ -195,7 +197,7 @@ func TestSendMetricsBatch_Encrypted(t *testing.T) {
 	batch := []models.Metrics{{ID: "Alloc", MType: models.Gauge, Value: &v}}
 	client := getClient()
 
-	res, err := SendMetricsBatch(ts.URL, batch, "", &key.PublicKey, &client)
+	res, err := SendMetricsBatch(ts.URL, batch, SendOptions{PubKey: &key.PublicKey}, &client)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, res.StatusCode)
